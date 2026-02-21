@@ -5,14 +5,14 @@ const navLinks = ["HOME", "ABOUT US", "CONTACT US", "DISCLAIMER"];
 const Index = () => {
   return (
     <div className="relative min-h-screen overflow-hidden">
-      {/* Background */}
+      {/* Background - B&W aesthetic */}
       <div className="absolute inset-0">
         <img
           src={heroBg}
           alt="Music production mixing console"
-          className="h-full w-full object-cover"
+          className="h-full w-full object-cover grayscale"
         />
-        <div className="absolute inset-0 bg-background/70 backdrop-blur-sm" />
+        <div className="absolute inset-0 bg-background/75" />
       </div>
 
       {/* Navigation */}
@@ -33,8 +33,8 @@ const Index = () => {
         </nav>
       </header>
 
-      {/* Hero Content */}
-      <main className="relative z-10 flex min-h-[calc(100vh-88px)] items-center px-8 lg:px-16">
+      {/* Hero Content - pushed to the right */}
+      <main className="relative z-10 flex min-h-[calc(100vh-88px)] items-center justify-end px-8 lg:px-16 xl:px-24">
         <div className="flex flex-col items-center gap-12 lg:flex-row lg:gap-20">
           {/* Yellow Circular Frame */}
           <div className="relative flex-shrink-0">
