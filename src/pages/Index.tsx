@@ -33,16 +33,16 @@ const Index = () => {
         </nav>
       </header>
 
-      {/* Hero Content - pushed to the right */}
-      <main className="relative z-10 flex min-h-[calc(100vh-88px)] items-end justify-start px-8 pb-16 lg:px-16 xl:px-24">
-        <div className="flex flex-col items-center gap-12 lg:flex-row lg:gap-20">
-          {/* Yellow Circular Frame */}
+      {/* Hero Content - circle left, text right, spread across */}
+      <main className="relative z-10 flex min-h-[calc(100vh-88px)] items-center px-8 lg:px-16 xl:px-24">
+        <div className="flex w-full flex-col items-center gap-12 lg:flex-row lg:items-center lg:justify-between">
+          {/* Yellow Circular Frame - left corner */}
           <div className="relative flex-shrink-0">
             <div className="h-64 w-64 rounded-full border-[6px] border-highlight lg:h-80 lg:w-80 xl:h-96 xl:w-96" />
           </div>
 
-          {/* Text Content */}
-          <div className="text-center lg:text-left">
+          {/* Text Content - right corner */}
+          <div className="text-center lg:text-right">
             <p className="mb-3 text-sm font-medium tracking-[0.3em] text-muted-foreground">
               Producer/Composer
             </p>
