@@ -34,7 +34,7 @@ const Index = () => {
       </header>
 
       {/* Hero Content - pushed to the right */}
-      <main className="relative z-10 flex min-h-[calc(100vh-88px)] items-center justify-end px-8 lg:px-16 xl:px-24">
+      <main className="relative z-10 flex min-h-[calc(100vh-88px)] items-end justify-start px-8 pb-16 lg:px-16 xl:px-24">
         <div className="flex flex-col items-center gap-12 lg:flex-row lg:gap-20">
           {/* Yellow Circular Frame */}
           <div className="relative flex-shrink-0">
