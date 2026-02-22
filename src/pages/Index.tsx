@@ -39,13 +39,21 @@ const Index = () => {
         <div className="flex w-full flex-col items-center gap-12 lg:flex-row lg:items-center lg:justify-between">
           {/* Yellow Circular Frame - left corner */}
           <div className="relative flex-shrink-0 h-64 w-64 lg:h-80 lg:w-80 xl:h-96 xl:w-96">
-            {/* Yellow circle behind */}
-            <div className="absolute inset-0 rounded-full bg-highlight shadow-[0_20px_60px_rgba(0,0,0,0.5)]" />
-            {/* Profile photo popping out of circle - 3D effect */}
+            {/* Layer 1: Full yellow circle background */}
+            <div className="absolute inset-0 rounded-full bg-highlight shadow-[0_20px_60px_rgba(0,0,0,0.5)]" style={{ zIndex: 1 }} />
+            
+            {/* Layer 2: Profile photo - upper body pops out */}
             <img
               src={profilePhoto}
               alt="Profile"
-              className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[115%] w-auto object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.7)]"
+              className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[120%] w-auto object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.7)]"
+              style={{ zIndex: 3 }}
+            />
+
+            {/* Layer 3: Bottom arc of circle covers lower body - 3D illusion */}
+            <div 
+              className="absolute inset-0 rounded-full bg-highlight"
+              style={{ zIndex: 4, clipPath: 'ellipse(50% 18% at 50% 90%)' }}
             />
           </div>
 
