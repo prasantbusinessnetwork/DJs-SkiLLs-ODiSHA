@@ -1,4 +1,5 @@
 import heroBg from "@/assets/hero-bg.jpg";
+import profilePhoto from "@/assets/profile-photo.png";
 
 const navLinks = ["HOME", "ABOUT US", "CONTACT US", "DISCLAIMER"];
 
@@ -38,7 +39,16 @@ const Index = () => {
         <div className="flex w-full flex-col items-center gap-12 lg:flex-row lg:items-center lg:justify-between">
           {/* Yellow Circular Frame - left corner */}
           <div className="relative flex-shrink-0">
-            <div className="h-64 w-64 rounded-full border-[6px] border-highlight bg-highlight/40 lg:h-80 lg:w-80 xl:h-96 xl:w-96" />
+            <div className="relative h-64 w-64 rounded-full border-[6px] border-highlight bg-highlight/40 lg:h-80 lg:w-80 xl:h-96 xl:w-96 overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.5),inset_0_-10px_30px_rgba(0,0,0,0.3)]">
+              <img
+                src={profilePhoto}
+                alt="Profile"
+                className="absolute inset-0 h-full w-full object-cover object-top scale-110 drop-shadow-[0_10px_25px_rgba(0,0,0,0.6)]"
+              />
+              {/* 3D depth overlay */}
+              <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/10 via-transparent to-black/30 pointer-events-none" />
+              <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/5 to-white/15 pointer-events-none" />
+            </div>
           </div>
 
           {/* Text Content - right corner */}
