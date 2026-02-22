@@ -38,7 +38,7 @@ const Index = () => {
         <div className="flex w-full flex-col items-center gap-12 lg:flex-row lg:items-center lg:justify-between">
           {/* Yellow Circular Frame - left corner */}
           <div className="relative flex-shrink-0">
-            <div className="h-64 w-64 rounded-full border-[6px] border-highlight lg:h-80 lg:w-80 xl:h-96 xl:w-96" />
+            <div className="h-64 w-64 rounded-full border-[6px] border-highlight bg-highlight/20 lg:h-80 lg:w-80 xl:h-96 xl:w-96" />
           </div>
 
           {/* Text Content - right corner */}
