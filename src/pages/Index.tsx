@@ -74,10 +74,6 @@ const Index = () => {
                 className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[120%] w-auto object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.7)]"
                 style={{ zIndex: 3 }}
               />
-              <div
-                className="absolute inset-0 rounded-full bg-highlight"
-                style={{ zIndex: 4, clipPath: 'ellipse(50% 18% at 50% 90%)' }}
-              />
             </div>
 
             {/* Hero Text */}
