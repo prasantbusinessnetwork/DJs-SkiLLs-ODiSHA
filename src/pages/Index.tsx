@@ -65,13 +65,24 @@ const Index = () => {
         {/* Hero Content */}
         <main className="relative z-10 flex min-h-[calc(100vh-88px)] items-center px-8 lg:px-16 xl:px-24">
           <div className="flex w-full flex-col items-center gap-12 lg:flex-row lg:items-center lg:justify-between">
-            {/* Hero Text - Left Side */}
-            <div className="text-center lg:text-left">
+            {/* Yellow Circle - Left Side */}
+            <div className="relative flex-shrink-0 h-64 w-64 lg:h-80 lg:w-80 xl:h-96 xl:w-96">
+              <div className="absolute inset-0 rounded-full bg-highlight shadow-[0_20px_60px_rgba(0,0,0,0.5)]" />
+              <img
+                src={profilePhoto}
+                alt="Profile"
+                className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[120%] w-auto object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.7)]"
+                style={{ zIndex: 3 }}
+              />
+            </div>
+
+            {/* Hero Text - Right Side */}
+            <div className="text-center lg:text-right">
               <p className="mb-2 text-sm font-medium tracking-widest text-muted-foreground">DJs SkiLLs ODiSHA</p>
               <h1 className="font-display text-5xl font-black leading-tight text-foreground lg:text-7xl">
                 SPREAD THE <span className="text-destructive">BASS</span>
               </h1>
-              <p className="mt-4 max-w-md text-sm leading-relaxed text-muted-foreground">
+              <p className="mt-4 max-w-md text-sm leading-relaxed text-muted-foreground lg:ml-auto">
                 The Best DJ Artist from Bhubaneswar, Odisha. Creating fire remixes, club mixes & visual mashups.{" "}
                 <span className="font-bold text-foreground">1.32K+ subscribers</span> on YouTube. Designer —{" "}
                 <span className="font-bold text-foreground">Sudhansu Kumar</span>.
@@ -84,17 +95,6 @@ const Index = () => {
               >
                 Subscribe Now
               </a>
-            </div>
-
-            {/* Yellow Circle - Right Side */}
-            <div className="relative flex-shrink-0 h-64 w-64 lg:h-80 lg:w-80 xl:h-96 xl:w-96">
-              <div className="absolute inset-0 rounded-full bg-highlight shadow-[0_20px_60px_rgba(0,0,0,0.5)]" />
-              <img
-                src={profilePhoto}
-                alt="Profile"
-                className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[120%] w-auto object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.7)]"
-                style={{ zIndex: 3 }}
-              />
             </div>
           </div>
         </main>
