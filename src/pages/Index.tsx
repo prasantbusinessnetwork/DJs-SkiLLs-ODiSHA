@@ -66,9 +66,6 @@ const Index = () => {
         <main className="relative z-10 flex min-h-[calc(100vh-88px)] items-center px-8 lg:px-16 xl:px-24">
           <div className="flex w-full flex-col items-center gap-12 lg:flex-row lg:items-center lg:justify-between">
             {/* Yellow Circular Frame */}
-            <div className="relative flex-shrink-0 h-64 w-64 lg:h-80 lg:w-80 xl:h-96 xl:w-96">
-              <div className="absolute inset-0 rounded-full bg-highlight shadow-[0_20px_60px_rgba(0,0,0,0.5)]" style={{ zIndex: 1 }} />
-            </div>
 
             {/* Hero Text */}
             <div className="text-center lg:text-left">
