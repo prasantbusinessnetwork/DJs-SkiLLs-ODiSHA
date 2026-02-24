@@ -1,5 +1,5 @@
 import heroBg from "@/assets/hero-bg.jpg";
-import profilePhoto from "@/assets/profile-cutout.png";
+import profilePhoto from "@/assets/profile-photo.png";
 import MixCard from "@/components/MixCard";
 import SectionHeader from "@/components/SectionHeader";
 import { ExternalLink, MapPin, User, MessageSquare } from "lucide-react";
