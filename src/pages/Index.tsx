@@ -1,5 +1,6 @@
 import heroBg from "@/assets/hero-bg.jpg";
 import profileCutout from "@/assets/profile-cutout.png";
+import skillLogo from "@/assets/skill-logo.png";
 import MixCard from "@/components/MixCard";
 import SectionHeader from "@/components/SectionHeader";
 import { ExternalLink, MapPin, User, MessageSquare } from "lucide-react";
@@ -46,9 +47,11 @@ const Index = () => {
 
         {/* Navigation */}
         <header className="relative z-10 flex items-center justify-between px-8 py-6 lg:px-16">
-          <div className="font-display text-xl font-bold tracking-widest text-foreground">
-            LOGO
-          </div>
+          <img
+            src={skillLogo}
+            alt="SKILL"
+            className="h-8 w-auto mix-blend-screen invert dark:invert-0"
+          />
           <nav className="hidden gap-8 md:flex">
             {navLinks.map((link) => (
               <a
