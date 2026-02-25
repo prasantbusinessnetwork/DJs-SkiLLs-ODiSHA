@@ -47,11 +47,9 @@ const Index = () => {
 
         {/* Navigation */}
         <header className="relative z-10 flex items-center justify-between px-8 py-6 lg:px-16">
-          <img
-            src={skillLogo}
-            alt="SKILL"
-            className="h-8 w-auto mix-blend-screen invert dark:invert-0"
-          />
+          <div className="font-display text-xl font-black tracking-[0.3em] text-foreground uppercase" style={{ fontStretch: 'expanded', letterSpacing: '0.25em' }}>
+            SKILL
+          </div>
           <nav className="hidden gap-8 md:flex">
             {navLinks.map((link) => (
               <a
