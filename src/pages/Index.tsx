@@ -105,7 +105,7 @@ const Index = () => {
         <section className="mb-16">
           <SectionHeader icon="🔥" title="Top Mixes" />
           <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-            {topMixes.map((mix) => (
+             {topMixes.map((mix) => (
               <MixCard
                 key={mix.videoId}
                 title={mix.title}
@@ -113,6 +113,7 @@ const Index = () => {
                 tag={mix.tag}
                 thumbnail={`https://img.youtube.com/vi/${mix.videoId}/maxresdefault.jpg`}
                 youtubeUrl={mix.youtubeUrl}
+                videoId={mix.videoId}
                 isNew={mix.isNew}
               />
             ))}
@@ -123,7 +124,7 @@ const Index = () => {
         <section className="mb-16">
           <SectionHeader icon="🎵" title="Popular Remixes" />
           <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-            {popularRemixes.map((mix) => (
+             {popularRemixes.map((mix) => (
               <MixCard
                 key={mix.videoId}
                 title={mix.title}
@@ -131,6 +132,7 @@ const Index = () => {
                 tag={mix.tag}
                 thumbnail={`https://img.youtube.com/vi/${mix.videoId}/maxresdefault.jpg`}
                 youtubeUrl={mix.youtubeUrl}
+                videoId={mix.videoId}
               />
             ))}
           </div>
@@ -140,7 +142,7 @@ const Index = () => {
         <section className="mb-16">
           <SectionHeader icon="🎧" title="Club Mixes" />
           <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-            {clubMixes.map((mix) => (
+             {clubMixes.map((mix) => (
               <MixCard
                 key={mix.videoId}
                 title={mix.title}
@@ -148,6 +150,7 @@ const Index = () => {
                 tag={mix.tag}
                 thumbnail={`https://img.youtube.com/vi/${mix.videoId}/maxresdefault.jpg`}
                 youtubeUrl={mix.youtubeUrl}
+                videoId={mix.videoId}
               />
             ))}
           </div>
