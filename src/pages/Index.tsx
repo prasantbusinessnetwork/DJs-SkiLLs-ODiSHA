@@ -1,5 +1,5 @@
 import heroBg from "@/assets/hero-bg.jpg";
-import profilePhoto from "@/assets/profile-photo.png";
+import profileCutout from "@/assets/profile-cutout.png";
 import MixCard from "@/components/MixCard";
 import SectionHeader from "@/components/SectionHeader";
 import { ExternalLink, MapPin, User, MessageSquare } from "lucide-react";
@@ -65,14 +65,12 @@ const Index = () => {
         {/* Hero Content */}
         <main className="relative z-10 flex min-h-[calc(100vh-88px)] items-center px-8 lg:px-16 xl:px-24">
           <div className="flex w-full flex-col items-center gap-12 lg:flex-row lg:items-center lg:justify-between">
-            {/* Yellow Circle - Left Side */}
-            <div className="relative flex-shrink-0 h-64 w-64 lg:h-80 lg:w-80 xl:h-96 xl:w-96">
-              <div className="absolute inset-0 rounded-full bg-highlight shadow-[0_20px_60px_rgba(0,0,0,0.5)]" />
+            {/* Profile Cutout - Left Side */}
+            <div className="relative flex-shrink-0 h-72 w-72 lg:h-96 lg:w-96 xl:h-[28rem] xl:w-[28rem]">
               <img
-                src={profilePhoto}
-                alt="Profile"
-                className="absolute bottom-0 left-1/2 -translate-x-1/2 h-[120%] w-auto object-contain drop-shadow-[0_10px_30px_rgba(0,0,0,0.7)]"
-                style={{ zIndex: 3 }}
+                src={profileCutout}
+                alt="DJs SkiLLs ODiSHA"
+                className="h-full w-full object-contain drop-shadow-[0_15px_40px_rgba(0,0,0,0.6)] filter contrast-110"
               />
             </div>
 
