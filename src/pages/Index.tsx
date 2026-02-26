@@ -1,8 +1,7 @@
 import heroBg from "@/assets/hero-bg.jpg";
 import profileCutout from "@/assets/profile-cutout.png";
 import skillLogo from "@/assets/skill-logo.png";
-import MixCard from "@/components/MixCard";
-import SectionHeader from "@/components/SectionHeader";
+import MixSection from "@/components/MixSection";
 import { ExternalLink, MapPin, User, MessageSquare } from "lucide-react";
 
 const navLinks = ["HOME", "ABOUT US", "CONTACT US", "DISCLAIMER"];
@@ -46,7 +45,7 @@ const Index = () => {
         </div>
 
         {/* Navigation */}
-        <header className="relative z-10 flex items-center justify-between px-8 py-6 lg:px-16">
+        <header className="relative z-10 flex items-center justify-between px-4 py-4 sm:px-8 sm:py-6 lg:px-16">
           <div className="font-display text-xl font-black tracking-[0.3em] text-foreground uppercase" style={{ fontStretch: 'expanded', letterSpacing: '0.25em' }}>
             SKILL
           </div>
@@ -64,7 +63,7 @@ const Index = () => {
         </header>
 
         {/* Hero Content */}
-        <main className="relative z-10 flex min-h-[calc(100vh-88px)] items-center px-8 lg:px-16 xl:px-24">
+        <main className="relative z-10 flex min-h-[calc(100vh-88px)] items-center px-4 sm:px-8 lg:px-16 xl:px-24">
           <div className="flex w-full flex-col items-center gap-12 lg:flex-row lg:items-center lg:justify-between">
             {/* Profile Cutout - Left Side */}
             <div className="relative flex-shrink-0 h-72 w-72 lg:h-96 lg:w-96 xl:h-[28rem] xl:w-[28rem]">
@@ -100,61 +99,10 @@ const Index = () => {
       </div>
 
       {/* ===== CONTENT SECTIONS ===== */}
-      <div className="px-8 py-12 lg:px-16 xl:px-24">
-        {/* 🔥 Top Mixes */}
-        <section className="mb-16">
-          <SectionHeader icon="🔥" title="Top Mixes" />
-          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-             {topMixes.map((mix) => (
-              <MixCard
-                key={mix.videoId}
-                title={mix.title}
-                artist={mix.artist}
-                tag={mix.tag}
-                thumbnail={`https://img.youtube.com/vi/${mix.videoId}/maxresdefault.jpg`}
-                youtubeUrl={mix.youtubeUrl}
-                videoId={mix.videoId}
-                isNew={mix.isNew}
-              />
-            ))}
-          </div>
-        </section>
-
-        {/* 🎵 Popular Remixes */}
-        <section className="mb-16">
-          <SectionHeader icon="🎵" title="Popular Remixes" />
-          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-             {popularRemixes.map((mix) => (
-              <MixCard
-                key={mix.videoId}
-                title={mix.title}
-                artist={mix.artist}
-                tag={mix.tag}
-                thumbnail={`https://img.youtube.com/vi/${mix.videoId}/maxresdefault.jpg`}
-                youtubeUrl={mix.youtubeUrl}
-                videoId={mix.videoId}
-              />
-            ))}
-          </div>
-        </section>
-
-        {/* 🎧 Club Mixes */}
-        <section className="mb-16">
-          <SectionHeader icon="🎧" title="Club Mixes" />
-          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-             {clubMixes.map((mix) => (
-              <MixCard
-                key={mix.videoId}
-                title={mix.title}
-                artist={mix.artist}
-                tag={mix.tag}
-                thumbnail={`https://img.youtube.com/vi/${mix.videoId}/maxresdefault.jpg`}
-                youtubeUrl={mix.youtubeUrl}
-                videoId={mix.videoId}
-              />
-            ))}
-          </div>
-        </section>
+      <div className="px-4 py-8 sm:px-8 sm:py-12 lg:px-16 xl:px-24">
+        <MixSection icon="🔥" title="Top Mixes" mixes={topMixes} />
+        <MixSection icon="🎵" title="Popular Remixes" mixes={popularRemixes} />
+        <MixSection icon="🎧" title="Club Mixes" mixes={clubMixes} />
 
         {/* About Section */}
         <section className="mb-16 rounded-xl border border-border bg-card p-8">
