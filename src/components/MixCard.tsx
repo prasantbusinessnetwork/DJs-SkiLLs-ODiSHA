@@ -24,7 +24,7 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
       href={youtubeUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="group w-[260px] min-w-[260px] flex-shrink-0 cursor-pointer"
+      className="group w-[200px] min-w-[200px] sm:w-[260px] sm:min-w-[260px] flex-shrink-0 cursor-pointer"
     >
       <div className="relative overflow-hidden rounded-lg">
         <img
