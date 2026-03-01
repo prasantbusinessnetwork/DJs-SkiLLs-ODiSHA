@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import heroBg from "@/assets/hero-bg.jpg";
 import profileCutout from "@/assets/profile-cutout.png";
 import skillLogo from "@/assets/skill-logo.png";
 import MixSection from "@/components/MixSection";
@@ -49,19 +50,31 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       {/* ===== HERO INTRO SECTION ===== */}
       <div className="relative min-h-screen overflow-hidden">
-        {/* Background - Auto-sliding video thumbnails */}
+        {/* Background - Original hero image */}
         <div className="absolute inset-0">
-          {allVideoIds.map((id, i) => (
-            <img
-              key={id}
-              src={`https://img.youtube.com/vi/${id}/maxresdefault.jpg`}
-              alt="Channel video thumbnail"
-              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${
-                i === currentBgIndex ? "opacity-100" : "opacity-0"
-              }`}
-            />
-          ))}
-          <div className="absolute inset-0 bg-background/80" />
+          <img
+            src={heroBg}
+            alt="Music production mixing console"
+            className="h-full w-full object-cover grayscale"
+          />
+          <div className="absolute inset-0 bg-background/75" />
+        </div>
+
+        {/* Auto-sliding video thumbnails strip */}
+        <div className="absolute bottom-0 left-0 right-0 z-[1] h-32 sm:h-40 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent z-[1]" />
+          <div className="relative h-full w-full">
+            {allVideoIds.map((id, i) => (
+              <img
+                key={id}
+                src={`https://img.youtube.com/vi/${id}/maxresdefault.jpg`}
+                alt="Channel video"
+                className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${
+                  i === currentBgIndex ? "opacity-60" : "opacity-0"
+                }`}
+              />
+            ))}
+          </div>
         </div>
 
         {/* Navigation */}
