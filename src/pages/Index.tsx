@@ -1,8 +1,14 @@
-import heroBg from "@/assets/hero-bg.jpg";
+import { useState, useEffect } from "react";
 import profileCutout from "@/assets/profile-cutout.png";
 import skillLogo from "@/assets/skill-logo.png";
 import MixSection from "@/components/MixSection";
 import { MapPin, User } from "lucide-react";
+
+const allVideoIds = [
+  "KsJ2-7cWTyg", "uYTeGgKheFw", "a5EEWUnI8rg", "k_smLZTvPug", "hK651bev0uI",
+  "bmgZMZfAy0M", "Ss3boQAYYCI", "Hj5o8msd8x8", "P6xu9rgEd_s", "5ilvPgCEibc",
+  "oRd8s5C8jAk", "nzNiNVSEpaE", "tzyU4eo9f3E", "LOl0c3cMN5c",
+];
 
 const navLinks = ["HOME", "ABOUT US", "CONTACT US", "DISCLAIMER"];
 
@@ -30,18 +36,32 @@ const clubMixes = [
 ];
 
 const Index = () => {
+  const [currentBgIndex, setCurrentBgIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentBgIndex((prev) => (prev + 1) % allVideoIds.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       {/* ===== HERO INTRO SECTION ===== */}
       <div className="relative min-h-screen overflow-hidden">
-        {/* Background - B&W aesthetic */}
+        {/* Background - Auto-sliding video thumbnails */}
         <div className="absolute inset-0">
-          <img
-            src={heroBg}
-            alt="Music production mixing console"
-            className="h-full w-full object-cover grayscale"
-          />
-          <div className="absolute inset-0 bg-background/75" />
+          {allVideoIds.map((id, i) => (
+            <img
+              key={id}
+              src={`https://img.youtube.com/vi/${id}/maxresdefault.jpg`}
+              alt="Channel video thumbnail"
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${
+                i === currentBgIndex ? "opacity-100" : "opacity-0"
+              }`}
+            />
+          ))}
+          <div className="absolute inset-0 bg-background/80" />
         </div>
 
         {/* Navigation */}
