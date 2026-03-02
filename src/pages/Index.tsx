@@ -44,7 +44,7 @@ const Index = () => {
 
         {/* Navigation */}
         <header className="relative z-10 flex items-center justify-between px-4 py-4 sm:px-8 sm:py-6 lg:px-16">
-          <img src={skillLogo} alt="SKILL" className="h-8 w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]" />
+          <img src={skillLogo} alt="SKILL" className="h-5 sm:h-6 lg:h-7 w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]" />
           <nav className="hidden gap-8 md:flex">
             {navLinks.map((link) => (
               <a
