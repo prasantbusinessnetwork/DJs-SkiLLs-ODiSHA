@@ -1,15 +1,8 @@
-import { useState, useEffect } from "react";
-import heroBg from "@/assets/hero-bg.jpg";
 import profileCutout from "@/assets/profile-cutout.png";
 import skillLogo from "@/assets/skill-logo.png";
 import MixSection from "@/components/MixSection";
 import { MapPin, User } from "lucide-react";
-
-const allVideoIds = [
-  "KsJ2-7cWTyg", "uYTeGgKheFw", "a5EEWUnI8rg", "k_smLZTvPug", "hK651bev0uI",
-  "bmgZMZfAy0M", "Ss3boQAYYCI", "Hj5o8msd8x8", "P6xu9rgEd_s", "5ilvPgCEibc",
-  "oRd8s5C8jAk", "nzNiNVSEpaE", "tzyU4eo9f3E", "LOl0c3cMN5c",
-];
+import { WebGLShader } from "@/components/ui/web-gl-shader";
 
 const navLinks = ["HOME", "ABOUT US", "CONTACT US", "DISCLAIMER"];
 
@@ -44,12 +37,8 @@ const Index = () => {
       <div className="relative min-h-screen overflow-hidden">
         {/* Background - Original hero image */}
         <div className="absolute inset-0">
-          <img
-            src={heroBg}
-            alt="Music production mixing console"
-            className="h-full w-full object-cover grayscale"
-          />
-          <div className="absolute inset-0 bg-background/75" />
+          <WebGLShader />
+          <div className="absolute inset-0 bg-background/60" />
         </div>
 
 
