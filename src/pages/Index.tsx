@@ -68,7 +68,7 @@ const Index = () => {
               <img
                 src={profileCutout}
                 alt="DJs SkiLLs ODiSHA"
-                className="h-full w-full object-contain drop-shadow-[0_15px_40px_rgba(0,0,0,0.6)] filter contrast-110"
+                className="h-full w-full rounded-full object-cover drop-shadow-[0_0_60px_rgba(255,255,255,0.15)] filter"
               />
             </div>
 
