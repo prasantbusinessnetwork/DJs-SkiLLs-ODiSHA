@@ -3,8 +3,14 @@ import skillLogo from "@/assets/skill-logo.png";
 import MixSection from "@/components/MixSection";
 import { MapPin, User } from "lucide-react";
 import { WebGLShader } from "@/components/ui/web-gl-shader";
+import { Link } from "react-router-dom";
 
-const navLinks = ["HOME", "ABOUT US", "CONTACT US", "DISCLAIMER"];
+const navLinks = [
+  { label: "HOME", to: "/" },
+  { label: "ABOUT US", to: "/about" },
+  { label: "CONTACT US", to: "#" },
+  { label: "DISCLAIMER", to: "#disclaimer" },
+];
 
 const topMixes = [
 { title: "Aaj Ki Raat (Remix)", artist: "DJs SkILLs ODISHA X Exzost", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=KsJ2-7cWTyg", videoId: "KsJ2-7cWTyg", isNew: true },
@@ -47,13 +53,23 @@ const Index = () => {
           <img src={skillLogo} alt="SKILL" className="h-5 sm:h-6 lg:h-7 w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]" />
           <nav className="hidden gap-8 md:flex">
             {navLinks.map((link) =>
-            <a
-              key={link}
-              href="#"
-              className="text-sm font-medium tracking-wider text-muted-foreground transition-colors hover:text-foreground">
-              
-                {link}
-              </a>
+              link.to.startsWith("/") ? (
+                <Link
+                  key={link.label}
+                  to={link.to}
+                  className="text-sm font-medium tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {link.label}
+                </Link>
+              ) : (
+                <a
+                  key={link.label}
+                  href={link.to}
+                  className="text-sm font-medium tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {link.label}
+                </a>
+              )
             )}
           </nav>
         </header>
