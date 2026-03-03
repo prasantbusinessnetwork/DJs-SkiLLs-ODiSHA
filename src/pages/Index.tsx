@@ -8,7 +8,7 @@ import { Link } from "react-router-dom";
 const navLinks = [
   { label: "HOME", to: "/" },
   { label: "ABOUT US", to: "/about" },
-  { label: "CONTACT US", to: "#" },
+  { label: "CONTACT US", to: "/contact" },
   { label: "DISCLAIMER", to: "#disclaimer" },
 ];
 
