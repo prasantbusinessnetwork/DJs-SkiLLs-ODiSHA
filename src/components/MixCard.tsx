@@ -14,9 +14,9 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
   const handleDownload = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    // Direct download via a reliable converter service
-    const converterUrl = `https://api.vevioz.com/apis/widget/download?url=https://www.youtube.com/watch?v=${videoId}`;
-    window.open(converterUrl, "_blank", "noopener,noreferrer");
+    // Open reliable MP3 download converter
+    const downloadUrl = `https://loader.to/api/button/?url=https://www.youtube.com/watch?v=${videoId}&f=mp3`;
+    window.open(downloadUrl, "_blank", "noopener,noreferrer");
   };
 
   const handlePlay = () => {
