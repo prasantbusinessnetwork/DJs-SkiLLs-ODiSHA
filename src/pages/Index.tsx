@@ -23,7 +23,8 @@ const fallbackMixes = [
 ];
 
 const Index = () => {
-  const { data: videos, isLoading, isError } = useYouTubeVideos(15);
+  // Fetch more videos so most/all YouTube uploads are shown
+  const { data: videos, isLoading, isError } = useYouTubeVideos(50);
 
   // Split videos into sections
   const latestVideos = videos?.slice(0, 5).map((v, i) => ({
@@ -32,12 +33,7 @@ const Index = () => {
     tag: i === 0 ? "NEW" : v.tag,
   })) || (isError ? fallbackMixes : []);
 
-  const popularVideos = videos?.slice(5, 10).map(v => ({
-    ...v,
-    tag: "Remix",
-  })) || [];
-
-  const moreVideos = videos?.slice(10, 15).map(v => ({
+  const allOtherVideos = videos?.slice(5).map(v => ({
     ...v,
     tag: "Mix",
   })) || [];
@@ -93,7 +89,7 @@ const Index = () => {
             <div className="text-center lg:text-right">
               <p className="mb-2 text-sm font-medium tracking-widest text-muted-foreground">DJs SkiLLs ODiSHA</p>
               <h1 className="font-display text-5xl font-black leading-tight text-foreground lg:text-7xl">
-                FEEL THE <span className="text-destructive">FREQUENCY</span>
+                FEEL THE <span className="text-destructive">FREQ</span>
               </h1>
               <p className="mt-4 max-w-md text-sm leading-relaxed text-muted-foreground lg:ml-auto">
                 The Best DJ Artist from Bhubaneswar, Odisha. Creating fire remixes, club mixes & visual mashups.{" "}
@@ -124,11 +120,8 @@ const Index = () => {
         {latestVideos.length > 0 && (
           <MixSection icon="🔥" title="Latest Videos" mixes={latestVideos} />
         )}
-        {popularVideos.length > 0 && (
-          <MixSection icon="🎵" title="More Videos" mixes={popularVideos} />
-        )}
-        {moreVideos.length > 0 && (
-          <MixSection icon="🎧" title="Explore" mixes={moreVideos} />
+        {allOtherVideos.length > 0 && (
+          <MixSection icon="🎧" title="All Videos" mixes={allOtherVideos} />
         )}
 
         {/* About Section */}
@@ -147,7 +140,9 @@ const Index = () => {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="rounded-lg bg-secondary p-4">
               <p className="mb-1 text-xs text-muted-foreground">Tagline</p>
-              <p className="font-display font-bold text-foreground">FEEL THE FREQUENCY</p>
+              <p className="font-display font-bold text-foreground">
+                FEEL THE <span className="text-destructive">FREQ</span>
+              </p>
             </div>
             <div className="rounded-lg bg-secondary p-4">
               <div className="mb-1 flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="h-3 w-3" /> Location</div>

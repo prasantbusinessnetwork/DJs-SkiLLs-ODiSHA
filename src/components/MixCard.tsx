@@ -14,8 +14,13 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
   const handleDownload = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    // Open reliable MP3 download converter
-    const downloadUrl = `https://loader.to/api/button/?url=https://www.youtube.com/watch?v=${videoId}&f=mp3`;
+    if (!videoId) return;
+
+    const apiBase =
+      import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
+    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(
+      videoId
+    )}`;
     window.open(downloadUrl, "_blank", "noopener,noreferrer");
   };
 

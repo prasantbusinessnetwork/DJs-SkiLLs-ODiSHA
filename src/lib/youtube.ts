@@ -35,17 +35,41 @@ export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]
   
   if (!data.items?.length) return [];
   
-  return data.items.map((item: any, index: number) => {
-    const videoId = item.id.videoId;
-    const snippet = item.snippet;
-    return {
-      title: snippet.title,
-      artist: snippet.channelTitle,
-      tag: index === 0 ? "Latest" : "Remix",
-      youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
-      videoId,
-      thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-      publishedAt: snippet.publishedAt,
-    };
-  });
+  return data.items
+    .map((item: any, index: number) => {
+      const videoId = item.id?.videoId;
+      const snippet = item.snippet;
+
+      if (!videoId || !snippet) return null;
+
+      // Skip deleted/private videos that only show generic placeholders
+      const title: string = snippet.title || "";
+      const normalizedTitle = title.toLowerCase();
+      if (
+        normalizedTitle.includes("private video") ||
+        normalizedTitle.includes("deleted video")
+      ) {
+        return null;
+      }
+
+      // Use YouTube's provided thumbnails with safe fallbacks
+      const thumbnails = snippet.thumbnails || {};
+      const thumbnailUrl =
+        thumbnails.maxres?.url ||
+        thumbnails.high?.url ||
+        thumbnails.medium?.url ||
+        thumbnails.default?.url ||
+        `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+
+      return {
+        title,
+        artist: snippet.channelTitle,
+        tag: index === 0 ? "Latest" : "Remix",
+        youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        videoId,
+        thumbnail: thumbnailUrl,
+        publishedAt: snippet.publishedAt,
+      } as YouTubeVideo;
+    })
+    .filter((v: YouTubeVideo | null): v is YouTubeVideo => v !== null);
 }

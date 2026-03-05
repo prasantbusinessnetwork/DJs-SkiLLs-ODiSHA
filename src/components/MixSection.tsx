@@ -9,6 +9,7 @@ interface Mix {
   tag: string;
   youtubeUrl: string;
   videoId: string;
+  thumbnail: string;
   isNew?: boolean;
 }
 
@@ -78,7 +79,7 @@ const MixSection = ({ icon, title, mixes }: MixSectionProps) => {
               title={mix.title}
               artist={mix.artist}
               tag={mix.tag}
-              thumbnail={`https://img.youtube.com/vi/${mix.videoId}/maxresdefault.jpg`}
+              thumbnail={mix.thumbnail}
               youtubeUrl={mix.youtubeUrl}
               videoId={mix.videoId}
               isNew={mix.isNew}
