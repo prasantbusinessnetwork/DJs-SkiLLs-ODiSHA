@@ -9,7 +9,7 @@ const navLinks = [
   { label: "HOME", to: "/" },
   { label: "ABOUT US", to: "/about" },
   { label: "CONTACT US", to: "/contact" },
-  { label: "DISCLAIMER", to: "#disclaimer" },
+  { label: "DISCLAIMER", to: "/disclaimer" },
 ];
 
 const topMixes = [
