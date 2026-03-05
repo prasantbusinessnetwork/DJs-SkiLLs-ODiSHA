@@ -90,7 +90,7 @@ const Index = () => {
             <div className="text-center lg:text-right">
               <p className="mb-2 text-sm font-medium tracking-widest text-muted-foreground">DJs SkiLLs ODiSHA</p>
               <h1 className="font-display text-5xl font-black leading-tight text-foreground lg:text-7xl">
-                SPREAD THE <span className="text-destructive">BASS</span>
+                FEEL THE <span className="text-destructive">FREQUENCY</span>
               </h1>
               <p className="mt-4 max-w-md text-sm leading-relaxed text-muted-foreground lg:ml-auto">
                 The Best DJ Artist from Bhubaneswar, Odisha. Creating fire remixes, club mixes & visual mashups.{" "}
