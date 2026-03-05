@@ -215,7 +215,7 @@ const ContactUs = () => {
         <h2 className="mb-4 font-display text-2xl font-bold text-foreground sm:text-3xl">Let's Create Something Epic</h2>
         <p className="mx-auto mb-6 max-w-md text-sm text-muted-foreground">Whether it's a remix, event booking, or collaboration — we're ready to make it happen.</p>
         <a
-          href="https://www.youtube.com/c/DJsSkillsQ35?sub_confirmation=1"
+          href="https://yt.openinapp.co/tqqna"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 rounded-full bg-destructive px-8 py-3 text-sm font-semibold text-destructive-foreground transition-opacity hover:opacity-90"

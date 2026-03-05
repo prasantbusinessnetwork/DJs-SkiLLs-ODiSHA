@@ -98,7 +98,7 @@ const Index = () => {
                 <span className="font-bold text-foreground">Sudhansu Kumar</span>.
               </p>
               <a
-                href="https://www.youtube.com/c/DJsSkillsQ35?sub_confirmation=1"
+                href="https://yt.openinapp.co/tqqna"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-6 inline-flex items-center gap-2 rounded-full bg-destructive px-6 py-3 text-sm font-semibold text-destructive-foreground transition-opacity hover:opacity-90">
