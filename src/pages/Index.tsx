@@ -1,9 +1,10 @@
 import profileCutout from "@/assets/profile-cutout.png";
 import skillLogo from "@/assets/skill-logo.png";
 import MixSection from "@/components/MixSection";
-import { MapPin, User } from "lucide-react";
+import { MapPin, User, Loader2 } from "lucide-react";
 import { WebGLShader } from "@/components/ui/web-gl-shader";
 import { Link } from "react-router-dom";
+import { useYouTubeVideos } from "@/hooks/useYouTubeVideos";
 
 const navLinks = [
   { label: "HOME", to: "/" },
@@ -12,30 +13,34 @@ const navLinks = [
   { label: "DISCLAIMER", to: "/disclaimer" },
 ];
 
-const topMixes = [
-{ title: "Aaj Ki Raat (Remix)", artist: "DJs SkILLs ODISHA X Exzost", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=KsJ2-7cWTyg", videoId: "KsJ2-7cWTyg", isNew: true },
-{ title: "Tum Toh Dhokebaaz Ho", artist: "DJs SkiLLs ODiSHA", tag: "Tapori Mix", youtubeUrl: "https://www.youtube.com/watch?v=uYTeGgKheFw", videoId: "uYTeGgKheFw" },
-{ title: "JAMAL KUDU REMIX", artist: "DJs SkiLLs ODiSHA", tag: "Trending", youtubeUrl: "https://www.youtube.com/watch?v=a5EEWUnI8rg", videoId: "a5EEWUnI8rg" },
-{ title: "SOFTLY (Remix)", artist: "Visual DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=k_smLZTvPug", videoId: "k_smLZTvPug" },
-{ title: "Illuminati (Remix)", artist: "Visual DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=hK651bev0uI", videoId: "hK651bev0uI" }];
-
-
-const popularRemixes = [
-{ title: "Dholida (Remix)", artist: "DJ Scoob X DJs SkiLLs ODiSHA", tag: "Navratri", youtubeUrl: "https://www.youtube.com/watch?v=bmgZMZfAy0M", videoId: "bmgZMZfAy0M" },
-{ title: "Jo Tum Mere Ho (Remix)", artist: "Exzost X DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=Ss3boQAYYCI", videoId: "Ss3boQAYYCI" },
-{ title: "ACHACHO (REMIX)", artist: "DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=Hj5o8msd8x8", videoId: "Hj5o8msd8x8" },
-{ title: "NAGADA SANG DHOL", artist: "DJs Skills ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=P6xu9rgEd_s", videoId: "P6xu9rgEd_s" },
-{ title: "Chuttamalle X Mashup", artist: "DJs SkiLLs ODiSHA", tag: "Mashup", youtubeUrl: "https://www.youtube.com/watch?v=5ilvPgCEibc", videoId: "5ilvPgCEibc" }];
-
-
-const clubMixes = [
-{ title: "TU MiLE DiL KHILE", artist: "DJs SKiLLs ODiSHA", tag: "Club Mix", youtubeUrl: "https://www.youtube.com/watch?v=oRd8s5C8jAk", videoId: "oRd8s5C8jAk" },
-{ title: "SULTHAN (CLUB REMiX)", artist: "DJs SkiLLs ODiSHA", tag: "Club Mix", youtubeUrl: "https://www.youtube.com/watch?v=nzNiNVSEpaE", videoId: "nzNiNVSEpaE" },
-{ title: "Ek Do TEEN REMIX", artist: "DJs SKiLLs ODiSHA", tag: "80's Mix", youtubeUrl: "https://www.youtube.com/watch?v=tzyU4eo9f3E", videoId: "tzyU4eo9f3E" },
-{ title: "Dil Pe Chalai Churiya", artist: "Dj Scoob X DJs SkiLLs", tag: "Club Mix", youtubeUrl: "https://www.youtube.com/watch?v=LOl0c3cMN5c", videoId: "LOl0c3cMN5c" }];
-
+// Fallback data in case API fails
+const fallbackMixes = [
+  { title: "Aaj Ki Raat (Remix)", artist: "DJs SkILLs ODISHA X Exzost", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=KsJ2-7cWTyg", videoId: "KsJ2-7cWTyg", isNew: true },
+  { title: "Tum Toh Dhokebaaz Ho", artist: "DJs SkiLLs ODiSHA", tag: "Tapori Mix", youtubeUrl: "https://www.youtube.com/watch?v=uYTeGgKheFw", videoId: "uYTeGgKheFw" },
+  { title: "JAMAL KUDU REMIX", artist: "DJs SkiLLs ODiSHA", tag: "Trending", youtubeUrl: "https://www.youtube.com/watch?v=a5EEWUnI8rg", videoId: "a5EEWUnI8rg" },
+  { title: "SOFTLY (Remix)", artist: "Visual DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=k_smLZTvPug", videoId: "k_smLZTvPug" },
+  { title: "Illuminati (Remix)", artist: "Visual DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=hK651bev0uI", videoId: "hK651bev0uI" },
+];
 
 const Index = () => {
+  const { data: videos, isLoading, isError } = useYouTubeVideos(15);
+
+  // Split videos into sections
+  const latestVideos = videos?.slice(0, 5).map((v, i) => ({
+    ...v,
+    isNew: i === 0,
+    tag: i === 0 ? "NEW" : v.tag,
+  })) || (isError ? fallbackMixes : []);
+
+  const popularVideos = videos?.slice(5, 10).map(v => ({
+    ...v,
+    tag: "Remix",
+  })) || [];
+
+  const moreVideos = videos?.slice(10, 15).map(v => ({
+    ...v,
+    tag: "Mix",
+  })) || [];
 
   return (
     <div className="min-h-screen bg-background">
@@ -46,7 +51,6 @@ const Index = () => {
           <WebGLShader />
           <div className="absolute inset-0 bg-background/60" />
         </div>
-
 
         {/* Navigation */}
         <header className="relative z-10 flex items-center justify-between px-4 py-4 sm:px-8 sm:py-6 lg:px-16">
@@ -83,7 +87,6 @@ const Index = () => {
                 src={profileCutout}
                 alt="DJs SkiLLs ODiSHA"
                 className="h-full w-full rounded-full object-cover drop-shadow-[0_0_60px_rgba(255,255,255,0.15)] filter" />
-              
             </div>
 
             {/* Hero Text - Right Side */}
@@ -102,7 +105,6 @@ const Index = () => {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-6 inline-flex items-center gap-2 rounded-full bg-destructive px-6 py-3 text-sm font-semibold text-destructive-foreground transition-opacity hover:opacity-90">
-                
                 Subscribe Now
               </a>
             </div>
@@ -112,9 +114,22 @@ const Index = () => {
 
       {/* ===== CONTENT SECTIONS ===== */}
       <div className="px-4 py-8 sm:px-8 sm:py-12 lg:px-16 xl:px-24">
-        <MixSection icon="🔥" title="Top Mixes" mixes={topMixes} />
-        <MixSection icon="🎵" title="Popular Remixes" mixes={popularRemixes} />
-        <MixSection icon="🎧" title="Club Mixes" mixes={clubMixes} />
+        {isLoading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <span className="ml-3 text-muted-foreground">Loading latest videos...</span>
+          </div>
+        )}
+
+        {latestVideos.length > 0 && (
+          <MixSection icon="🔥" title="Latest Videos" mixes={latestVideos} />
+        )}
+        {popularVideos.length > 0 && (
+          <MixSection icon="🎵" title="More Videos" mixes={popularVideos} />
+        )}
+        {moreVideos.length > 0 && (
+          <MixSection icon="🎧" title="Explore" mixes={moreVideos} />
+        )}
 
         {/* About Section */}
         <section className="mb-16 rounded-xl border border-border bg-card p-8">
@@ -132,7 +147,7 @@ const Index = () => {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="rounded-lg bg-secondary p-4">
               <p className="mb-1 text-xs text-muted-foreground">Tagline</p>
-              <p className="font-display font-bold text-foreground">SPREAD THE BASS</p>
+              <p className="font-display font-bold text-foreground">FEEL THE FREQUENCY</p>
             </div>
             <div className="rounded-lg bg-secondary p-4">
               <div className="mb-1 flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="h-3 w-3" /> Location</div>
@@ -148,8 +163,7 @@ const Index = () => {
         {/* Disclaimer */}
         <section className="mb-16 rounded-xl border border-border bg-card p-8">
           <h3 className="mb-3 font-display text-xl font-bold text-foreground">Disclaimer</h3>
-          <p className="text-sm leading-relaxed text-muted-foreground">Copyright Disclaimer Under Section 107 of the Copyright Act 1976, allowance is made for ” Fair Use” for purposes Such as Criticism, Comment, News Reporting, Teaching, Scholarship & Research. Fair use is a use permitted by Copyright Statute that might otherwise be infringing. All video on this channel are for Promotion, Entertainment, Criticism or Comment.
-
+          <p className="text-sm leading-relaxed text-muted-foreground">Copyright Disclaimer Under Section 107 of the Copyright Act 1976, allowance is made for " Fair Use" for purposes Such as Criticism, Comment, News Reporting, Teaching, Scholarship & Research. Fair use is a use permitted by Copyright Statute that might otherwise be infringing. All video on this channel are for Promotion, Entertainment, Criticism or Comment.
           </p>
         </section>
 
@@ -182,7 +196,6 @@ const Index = () => {
         </footer>
       </div>
     </div>);
-
 };
 
 export default Index;
