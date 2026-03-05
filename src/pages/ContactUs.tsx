@@ -9,7 +9,7 @@ const ContactUs = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const mailtoLink = `mailto:djsskillsodisha@gmail.com?subject=${encodeURIComponent(formData.subject)}&body=${encodeURIComponent(`Name: ${formData.name}\nEmail: ${formData.email}\n\n${formData.message}`)}`;
+    const mailtoLink = `mailto:sudhansukhatua777@gmail.com?subject=${encodeURIComponent(formData.subject)}&body=${encodeURIComponent(`Name: ${formData.name}\nEmail: ${formData.email}\n\n${formData.message}`)}`;
     window.open(mailtoLink, "_blank");
     setSubmitted(true);
     setTimeout(() => setSubmitted(false), 3000);
@@ -48,14 +48,14 @@ const ContactUs = () => {
       <section className="mx-auto max-w-5xl px-4 py-16 sm:px-8 sm:py-20">
         <div className="mb-16 grid grid-cols-1 gap-6 sm:grid-cols-3">
           <a
-            href="mailto:djsskillsodisha@gmail.com"
+            href="mailto:sudhansukhatua777@gmail.com"
             className="group rounded-xl border border-border bg-card p-6 text-center transition-all hover:border-primary/30 hover:shadow-[0_0_20px_rgba(255,165,0,0.05)]"
           >
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 transition-colors group-hover:bg-primary/20">
               <Mail className="h-6 w-6 text-primary" />
             </div>
             <h3 className="mb-1 font-display text-lg font-bold text-foreground">Email Us</h3>
-            <p className="text-sm text-muted-foreground">djsskillsodisha@gmail.com</p>
+            <p className="text-sm text-muted-foreground">sudhansukhatua777@gmail.com</p>
           </a>
 
           <a
