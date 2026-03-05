@@ -20,8 +20,8 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
   };
 
   const handlePlay = () => {
-    // Open YouTube via openinapp link for mobile compatibility
-    window.open("https://yt.openinapp.co/tqqna", "_blank", "noopener,noreferrer");
+    // Open the specific video on YouTube
+    window.open(`https://www.youtube.com/watch?v=${videoId}`, "_blank", "noopener,noreferrer");
   };
 
   return (
