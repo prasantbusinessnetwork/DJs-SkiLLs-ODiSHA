@@ -22,67 +22,72 @@ let videoCache = {
   ttl: 10 * 60 * 1000 // 10 minutes cache
 };
 
+let fetching = false;
+
+function fetchVideosBackground() {
+  if (fetching) return;
+  fetching = true;
+  console.log("Fetching fresh videos from YouTube in background...");
+  
+  const ytDlp = spawn(YTDLP_PATH, [
+    "--flat-playlist",
+    "--playlist-items", "1-30", 
+    "--print", "%(id)s|%(title)s|%(uploader)s|%(upload_date)s",
+    CHANNEL_URL
+  ]);
+
+  let output = "";
+  ytDlp.stdout.on("data", (data) => {
+    output += data.toString();
+  });
+
+  ytDlp.on("close", (code) => {
+    fetching = false;
+    if (code !== 0) {
+      console.warn("Background fetch failed, keeping old cache if available");
+      return;
+    }
+
+    const lines = output.trim().split("\n").filter(line => line.includes("|"));
+    const videos = lines.map(line => {
+      const [id, title, uploader, date] = line.split("|");
+      return {
+        videoId: id,
+        title: title,
+        artist: uploader,
+        tag: "Remix",
+        youtubeUrl: `https://www.youtube.com/watch?v=${id}`,
+        thumbnail: `https://img.youtube.com/vi/${id}/mqdefault.jpg`,
+        publishedAt: date
+      };
+    });
+
+    videoCache = {
+      data: videos,
+      timestamp: Date.now(),
+      ttl: 10 * 60 * 1000
+    };
+    console.log("Background cache updated successfully");
+  });
+}
+
+// Update cache every 9 minutes so it never expires (10 min ttl)
+setInterval(fetchVideosBackground, 9 * 60 * 1000);
+// Initial warm-up
+fetchVideosBackground();
+
 app.get("/api/videos", async (req, res) => {
   try {
     const maxResults = parseInt(req.query.maxResults) || 15;
-    const now = Date.now();
-
-    // Check cache first
-    if (videoCache.data && (now - videoCache.timestamp < videoCache.ttl)) {
-      console.log("Serving videos from cache");
+    
+    // Provide instant response from memory cache
+    if (videoCache.data && videoCache.data.length > 0) {
       return res.json(videoCache.data.slice(0, maxResults));
     }
-
-    console.log("Fetching fresh videos from YouTube...");
     
-    // Use yt-dlp to get the latest videos
-    // --flat-playlist: don't download, just list
-    // --playlist-items: limit results (fetch 30 to have a good cache size)
-    const ytDlp = spawn(YTDLP_PATH, [
-      "--flat-playlist",
-      "--playlist-items", "1-30", 
-      "--print", "%(id)s|%(title)s|%(uploader)s|%(upload_date)s",
-      CHANNEL_URL
-    ]);
-
-    let output = "";
-    ytDlp.stdout.on("data", (data) => {
-      output += data.toString();
-    });
-
-    ytDlp.on("close", (code) => {
-      if (code !== 0) {
-        // If fetch fails but we have old cache, use it as fallback
-        if (videoCache.data) {
-          console.warn("Fetch failed, falling back to expired cache");
-          return res.json(videoCache.data.slice(0, maxResults));
-        }
-        return res.status(500).json({ error: "Failed to fetch videos" });
-      }
-
-      const lines = output.trim().split("\n").filter(line => line.includes("|"));
-      const videos = lines.map(line => {
-        const [id, title, uploader, date] = line.split("|");
-        return {
-          videoId: id,
-          title: title,
-          artist: uploader,
-          tag: "Remix",
-          youtubeUrl: `https://www.youtube.com/watch?v=${id}`,
-          thumbnail: `https://img.youtube.com/vi/${id}/mqdefault.jpg`,
-          publishedAt: date
-        };
-      });
-
-      // Update cache
-      videoCache = {
-        data: videos,
-        timestamp: now,
-        ttl: 10 * 60 * 1000
-      };
-
-      res.json(videos.slice(0, maxResults));
-    });
+    // If cache is empty (just spinning up), return 503 so frontend gracefully falls back to direct API
+    return res.status(503).json({ error: "Cache warming up" });
+    
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
