@@ -16,10 +16,11 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     e.stopPropagation();
     if (!videoId) return;
 
-    // Use a cross-device compatible external MP3 converter
-    const downloadUrl = `https://loader.to/api/button/?url=${encodeURIComponent(
-      `https://www.youtube.com/watch?v=${videoId}`
-    )}&f=mp3`;
+    const apiBase =
+      import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
+    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(
+      videoId
+    )}`;
     window.open(downloadUrl, "_blank", "noopener,noreferrer");
   };
 

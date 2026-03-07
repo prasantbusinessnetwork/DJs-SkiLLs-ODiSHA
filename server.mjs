@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import ytdl from "@distube/ytdl-core";
+import ytdl from "ytdl-core";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegPath from "ffmpeg-static";
 
@@ -8,10 +8,6 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 
 const app = express();
 app.use(cors());
-
-app.get("/", (_req, res) => {
-  res.send("DJs SkiLLs ODiSHA download helper server is running.");
-});
 
 app.get("/api/download", async (req, res) => {
   try {
