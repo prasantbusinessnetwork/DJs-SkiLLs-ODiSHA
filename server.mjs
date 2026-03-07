@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { spawn, execSync } from "child_process";
+import { spawn } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
@@ -9,7 +9,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(cors());
+
+// Allow all origins and expose Content-Disposition so mobile browsers
+// can read the filename from the download stream
+app.use(cors({
+  origin: "*",
+  exposedHeaders: ["Content-Disposition", "Content-Type", "Content-Length"],
+}));
 
 // Paths to binaries
 const YTDLP_PATH = path.join(__dirname, "yt-dlp.exe");
@@ -93,6 +99,30 @@ app.get("/api/videos", async (req, res) => {
   }
 });
 
+/**
+ * Async helper — fetch the video title via yt-dlp without blocking the event loop.
+ * Falls back to the videoId if anything goes wrong.
+ */
+function getVideoTitle(videoUrl) {
+  return new Promise((resolve) => {
+    const proc = spawn(YTDLP_PATH, ["--get-title", "--no-warnings", videoUrl]);
+    let out = "";
+    proc.stdout.on("data", (d) => (out += d.toString()));
+    proc.on("close", () => {
+      const raw = out.trim();
+      const safe = raw
+        .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 80);
+      resolve(safe || null);
+    });
+    proc.on("error", () => resolve(null));
+    // 10 s timeout — don't block the download indefinitely
+    setTimeout(() => { proc.kill(); resolve(null); }, 10000);
+  });
+}
+
 app.get("/api/download", async (req, res) => {
   try {
     const { videoId } = req.query;
@@ -103,31 +133,23 @@ app.get("/api/download", async (req, res) => {
 
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    // Get video title first for the filename
-    let safeTitle = videoId;
-    try {
-      const titleBuffer = execSync(`"${YTDLP_PATH}" --get-title "${videoUrl}"`);
-      const rawTitle = titleBuffer.toString().trim();
-      safeTitle = rawTitle
-        .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 80) || videoId;
-    } catch (titleErr) {
-      console.error("Error getting title:", titleErr.message);
-    }
+    // Fetch title asynchronously (non-blocking)
+    const rawTitle = await getVideoTitle(videoUrl);
+    const safeTitle = rawTitle || videoId;
 
+    // RFC 5987 encoded filename — works on all mobile browsers (iOS Safari,
+    // Android Chrome) and handles non-ASCII characters in song names.
+    const encodedFilename = encodeURIComponent(`${safeTitle}.mp3`).replace(/'/g, "%27");
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="${safeTitle}.mp3"`
+      `attachment; filename="${safeTitle}.mp3"; filename*=UTF-8''${encodedFilename}`
     );
     res.setHeader("Content-Type", "audio/mpeg");
+    // Tell CDN not to cache download responses
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Vary", "Origin");
 
-    // Spawn yt-dlp to stream the audio directly
-    // -x: extract audio
-    // --audio-format mp3: convert to mp3
-    // --ffmpeg-location: point to our ffmpeg
-    // -o -: output to stdout
+    // Spawn yt-dlp to stream the audio directly to the response
     const ytDlp = spawn(YTDLP_PATH, [
       "-x",
       "--audio-format", "mp3",
@@ -140,7 +162,6 @@ app.get("/api/download", async (req, res) => {
     ytDlp.stdout.pipe(res);
 
     ytDlp.stderr.on("data", (data) => {
-      // Log progress or errors from yt-dlp
       const msg = data.toString();
       if (msg.includes("ERROR")) {
         console.error("yt-dlp error:", msg);
@@ -154,10 +175,10 @@ app.get("/api/download", async (req, res) => {
           res.status(500).json({ error: "Failed to download audio" });
         }
       }
-      res.end();
+      if (!res.writableEnded) res.end();
     });
 
-    // Handle client disconnect
+    // Handle client disconnect (mobile user navigating away)
     req.on("close", () => {
       ytDlp.kill();
     });
@@ -166,7 +187,7 @@ app.get("/api/download", async (req, res) => {
     console.error("Download error:", err.message);
     if (!res.headersSent) {
       res.status(500).json({ error: "Internal server error" });
-    } else {
+    } else if (!res.writableEnded) {
       res.end();
     }
   }

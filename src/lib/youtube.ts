@@ -95,14 +95,13 @@ export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]
         return null;
       }
 
-      // Use YouTube's provided thumbnails with safe fallbacks
+      // Use mqdefault (320x180, ~15 KB) — plenty sharp for a 200-260px card.
+      // maxres/high (~100 KB) is wasteful at card size and slows first load.
       const thumbnails = snippet.thumbnails || {};
       const thumbnailUrl =
-        thumbnails.maxres?.url ||
-        thumbnails.high?.url ||
         thumbnails.medium?.url ||
         thumbnails.default?.url ||
-        `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+        `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
 
       return {
         title,

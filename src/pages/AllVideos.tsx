@@ -2,6 +2,8 @@ import { Loader2, Search, ArrowLeft } from "lucide-react";
 import { useYouTubeVideos } from "@/hooks/useYouTubeVideos";
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import LazyImage from "@/components/LazyImage";
+
 
 const AllVideos = () => {
   const { data: videos, isLoading, isError } = useYouTubeVideos(50);
@@ -83,10 +85,10 @@ const AllVideos = () => {
               className="group overflow-hidden rounded-xl border border-border bg-card/70 shadow-sm backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-destructive/60 hover:shadow-xl"
             >
               <div className="relative cursor-pointer" onClick={() => window.open(video.youtubeUrl, "_blank", "noopener,noreferrer")}>
-                <img
+                <LazyImage
                   src={video.thumbnail}
                   alt={video.title}
-                  className="aspect-video w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  className="aspect-video w-full transition-transform duration-300 group-hover:scale-105"
                 />
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent opacity-60" />
                 <div className="absolute left-3 top-3 rounded-full bg-background/80 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
