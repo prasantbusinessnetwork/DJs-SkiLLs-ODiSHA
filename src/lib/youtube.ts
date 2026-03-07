@@ -35,19 +35,32 @@ async function getChannelId(): Promise<string> {
 
 export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]> {
   // Try local backend first
-  try {
-    const apiBase = getApiBase();
-    const localRes = await fetch(`${apiBase}/api/videos?maxResults=${maxResults}`);
-    if (localRes.ok) {
-      const videos = await localRes.json();
-      if (Array.isArray(videos) && videos.length > 0) {
-        return videos;
+  while (true) {
+    try {
+      const apiBase = getApiBase();
+      const localRes = await fetch(`${apiBase}/api/videos?maxResults=${maxResults}`);
+      
+      if (localRes.ok) {
+        const videos = await localRes.json();
+        if (Array.isArray(videos) && videos.length > 0) {
+          return videos;
+        }
+      } else if (localRes.status === 503) {
+        // Backend is warming up its cache, wait a second and retry
+        console.log("Backend cache is warming up, retrying in 1s...");
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        continue;
+      } else {
+        // Some other error, break out and use fallback
+        break;
       }
+    } catch (err) {
+      console.warn("Local video API failed, falling back to Google API:", err);
+      break;
     }
-  } catch (err) {
-    console.warn("Local video API failed, falling back to Google API:", err);
   }
 
+  console.log("Falling back to standard Google API request");
   // Fallback to Google API
   const channelId = await getChannelId();
   
