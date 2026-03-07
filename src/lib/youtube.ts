@@ -1,5 +1,6 @@
 const YOUTUBE_API_KEY = "AIzaSyCHHK85TvMyyydXu35r6z18kMJHcpuheQA";
 const KNOWN_VIDEO_ID = "KsJ2-7cWTyg"; // Used to discover channel ID
+import { getApiBase } from "./utils";
 
 export interface YouTubeVideo {
   title: string;
@@ -35,7 +36,7 @@ async function getChannelId(): Promise<string> {
 export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]> {
   // Try local backend first
   try {
-    const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
+    const apiBase = getApiBase();
     const localRes = await fetch(`${apiBase}/api/videos?maxResults=${maxResults}`);
     if (localRes.ok) {
       const videos = await localRes.json();

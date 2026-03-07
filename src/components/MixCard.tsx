@@ -1,4 +1,5 @@
 import { Play, Download } from "lucide-react";
+import { getApiBase } from "../lib/utils";
 
 interface MixCardProps {
   title: string;
@@ -16,12 +17,11 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     e.stopPropagation();
     if (!videoId) return;
 
-    const apiBase =
-      import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
+    const apiBase = getApiBase();
     const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(
       videoId
     )}`;
-    window.open(downloadUrl, "_blank", "noopener,noreferrer");
+    window.location.href = downloadUrl;
   };
 
   const handlePlay = () => {
