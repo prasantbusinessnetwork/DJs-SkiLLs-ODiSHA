@@ -23,10 +23,12 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!videoId) return;
-    const url = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId)}`;
-    // window.open triggers browser download manager on mobile; the _blank
-    // target combined with correct Content-Disposition from the server handles it
-    window.open(url, "_blank", "noopener,noreferrer");
+    const url = `${apiBase}/api/download?videoId=${encodeURIComponent(
+      videoId
+    )}&title=${encodeURIComponent(title)}`;
+    // Navigate in the same tab so mobile browsers treat this as a direct
+    // user action and start the download instead of blocking a new tab.
+    window.location.href = url;
   };
 
   const handlePlay = () => {

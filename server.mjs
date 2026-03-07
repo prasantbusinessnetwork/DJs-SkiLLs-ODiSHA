@@ -77,6 +77,14 @@ function fetchVideosBackground() {
   });
 }
 
+function sanitizeFileName(raw) {
+  return raw
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
 // Update cache every 9 minutes so it never expires (10 min ttl)
 setInterval(fetchVideosBackground, 9 * 60 * 1000);
 // Initial warm-up
@@ -110,11 +118,7 @@ function getVideoTitle(videoUrl) {
     proc.stdout.on("data", (d) => (out += d.toString()));
     proc.on("close", () => {
       const raw = out.trim();
-      const safe = raw
-        .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 80);
+      const safe = sanitizeFileName(raw);
       resolve(safe || null);
     });
     proc.on("error", () => resolve(null));
@@ -125,7 +129,7 @@ function getVideoTitle(videoUrl) {
 
 app.get("/api/download", async (req, res) => {
   try {
-    const { videoId } = req.query;
+    const { videoId, title } = req.query;
 
     if (!videoId || typeof videoId !== "string") {
       return res.status(400).json({ error: "videoId query param is required" });
@@ -133,9 +137,15 @@ app.get("/api/download", async (req, res) => {
 
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    // Fetch title asynchronously (non-blocking)
-    const rawTitle = await getVideoTitle(videoUrl);
-    const safeTitle = rawTitle || videoId;
+    // Prefer client-provided title (matches card UI), falling back to yt-dlp lookup
+    // and finally the raw videoId.
+    let safeTitle;
+    if (typeof title === "string" && title.trim()) {
+      safeTitle = sanitizeFileName(title);
+    } else {
+      const fetchedTitle = await getVideoTitle(videoUrl);
+      safeTitle = fetchedTitle || videoId;
+    }
 
     // RFC 5987 encoded filename — works on all mobile browsers (iOS Safari,
     // Android Chrome) and handles non-ASCII characters in song names.

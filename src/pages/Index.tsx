@@ -5,6 +5,7 @@ import { MapPin, User, Loader2 } from "lucide-react";
 import { WebGLShader } from "@/components/ui/web-gl-shader";
 import { Link } from "react-router-dom";
 import { useYouTubeVideos } from "@/hooks/useYouTubeVideos";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const navLinks = [
   { label: "HOME", to: "/" },
@@ -23,8 +24,9 @@ const fallbackMixes = [
 ];
 
 const Index = () => {
-  // Fetch more videos so most/all YouTube uploads are shown
-  const { data: videos, isLoading, isError } = useYouTubeVideos(50);
+  // Fetch a reasonable number of videos for the homepage to keep initial load fast
+  const { data: videos, isLoading, isError } = useYouTubeVideos(24);
+  const isMobile = useIsMobile();
 
   // Split videos into sections
   const latestVideos = videos?.slice(0, 5).map((v, i) => ({
@@ -44,7 +46,11 @@ const Index = () => {
       <div className="relative min-h-screen overflow-hidden">
         {/* Background - Original hero image */}
         <div className="absolute inset-0">
-          <WebGLShader />
+          {!isMobile ? (
+            <WebGLShader />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-[#050816] via-background to-[#020617]" />
+          )}
           <div className="absolute inset-0 bg-background/60" />
         </div>
 
