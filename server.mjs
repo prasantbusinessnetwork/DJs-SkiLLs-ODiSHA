@@ -174,7 +174,7 @@ app.get("/api/download", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`Download server running on http://localhost:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Download server running on port ${PORT} (0.0.0.0)`);
 });
 

@@ -12,17 +12,10 @@ interface MixCardProps {
 }
 
 const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: MixCardProps) => {
-  const handleDownload = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!videoId) return;
-
-    const apiBase = getApiBase();
-    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(
-      videoId
-    )}`;
-    window.location.href = downloadUrl;
-  };
+  const apiBase = getApiBase();
+  const downloadUrl = videoId 
+    ? `${apiBase}/api/download?videoId=${encodeURIComponent(videoId)}` 
+    : "#";
 
   const handlePlay = () => {
     // Open the specific video on YouTube
@@ -63,14 +56,18 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
             {tag}
           </span>
         </div>
-        <button
-          onClick={handleDownload}
+        <a
+          href={downloadUrl}
+          download
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
           className="mt-0.5 flex h-7 items-center gap-1 rounded-full bg-destructive px-2.5 text-[10px] font-bold text-destructive-foreground transition-opacity hover:opacity-80"
           title="Download Now"
         >
           <Download className="h-3 w-3" />
           Download
-        </button>
+        </a>
       </div>
     </div>
   );
