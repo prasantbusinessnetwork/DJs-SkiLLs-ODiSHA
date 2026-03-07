@@ -19,6 +19,13 @@ async function getChannelId(): Promise<string> {
   const res = await fetch(
     `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${KNOWN_VIDEO_ID}&key=${YOUTUBE_API_KEY}`
   );
+  
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    console.error("YouTube API getChannelId error:", errorData);
+    throw new Error(`YouTube API error: ${res.status}`);
+  }
+
   const data = await res.json();
   if (!data.items?.length) throw new Error("Could not find channel");
   cachedChannelId = data.items[0].snippet.channelId;
@@ -26,11 +33,33 @@ async function getChannelId(): Promise<string> {
 }
 
 export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]> {
+  // Try local backend first
+  try {
+    const apiBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
+    const localRes = await fetch(`${apiBase}/api/videos?maxResults=${maxResults}`);
+    if (localRes.ok) {
+      const videos = await localRes.json();
+      if (Array.isArray(videos) && videos.length > 0) {
+        return videos;
+      }
+    }
+  } catch (err) {
+    console.warn("Local video API failed, falling back to Google API:", err);
+  }
+
+  // Fallback to Google API
   const channelId = await getChannelId();
   
   const res = await fetch(
     `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&type=video&maxResults=${maxResults}&key=${YOUTUBE_API_KEY}`
   );
+  
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    console.error("YouTube API fetchLatestVideos error:", errorData);
+    throw new Error(`YouTube API error: ${res.status}`);
+  }
+
   const data = await res.json();
   
   if (!data.items?.length) return [];
