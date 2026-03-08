@@ -4,6 +4,7 @@ import { spawn } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import { createClient } from "@supabase/supabase-js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +22,16 @@ app.use(cors({
 const YTDLP_PATH = path.join(__dirname, "yt-dlp.exe");
 const FFMPEG_PATH = path.join(__dirname, "node_modules", "ffmpeg-static", "ffmpeg.exe");
 const CHANNEL_URL = "https://www.youtube.com/@DJsSkiLLsODiSHA/videos";
+
+// Supabase (optional) — used for logging downloads to the database when configured
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { persistSession: false },
+      })
+    : null;
 
 let videoCache = {
   data: null,
@@ -158,6 +169,25 @@ app.get("/api/download", async (req, res) => {
     // Tell CDN not to cache download responses
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Vary", "Origin");
+
+    // Fire-and-forget logging to Supabase if configured
+    if (supabase) {
+      supabase
+        .from("downloads")
+        .insert({
+          video_id: videoId,
+          title: safeTitle,
+          downloaded_at: new Date().toISOString(),
+        })
+        .then((result) => {
+          if (result.error) {
+            console.error("Supabase log error:", result.error.message);
+          }
+        })
+        .catch((e) => {
+          console.error("Supabase log exception:", e.message);
+        });
+    }
 
     // Spawn yt-dlp to stream the audio directly to the response
     const ytDlp = spawn(YTDLP_PATH, [
