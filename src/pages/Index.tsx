@@ -5,6 +5,7 @@ import { MapPin, User, Loader2 } from "lucide-react";
 import { WebGLShader } from "@/components/ui/web-gl-shader";
 import { Link } from "react-router-dom";
 import { useYouTubeVideos } from "@/hooks/useYouTubeVideos";
+import LatestVideosGrid from "@/components/LatestVideosGrid";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const navLinks = [
@@ -124,7 +125,16 @@ const Index = () => {
         )}
 
         {latestVideos.length > 0 && (
-          <MixSection icon="🔥" title="Latest Videos" mixes={latestVideos} />
+          <section className="mb-12">
+            <h2 className="mb-4 font-display text-2xl font-bold text-foreground">
+              Latest from YouTube
+            </h2>
+            <p className="mb-6 text-sm text-muted-foreground">
+              Automatically fetched from the official DJs SkiLLs ODiSHA YouTube
+              channel.
+            </p>
+            <LatestVideosGrid />
+          </section>
         )}
         {allOtherVideos.length > 0 && (
           <MixSection icon="🎧" title="All Videos" mixes={allOtherVideos} />
