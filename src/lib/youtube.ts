@@ -1,5 +1,3 @@
-const YOUTUBE_API_KEY = "AIzaSyCHHK85TvMyyydXu35r6z18kMJHcpuheQA";
-const KNOWN_VIDEO_ID = "KsJ2-7cWTyg"; // Used to discover channel ID
 import { getApiBase } from "./utils";
 
 export interface YouTubeVideo {
@@ -12,60 +10,59 @@ export interface YouTubeVideo {
   publishedAt: string;
 }
 
-let cachedChannelId: string | null = null;
-
-async function getChannelId(): Promise<string> {
-  if (cachedChannelId) return cachedChannelId;
-  
-  const res = await fetch(
-    `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${KNOWN_VIDEO_ID}&key=${YOUTUBE_API_KEY}`
-  );
-  
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    console.error("YouTube API getChannelId error:", errorData);
-    throw new Error(`YouTube API error: ${res.status}`);
-  }
-
-  const data = await res.json();
-  if (!data.items?.length) throw new Error("Could not find channel");
-  cachedChannelId = data.items[0].snippet.channelId;
-  return cachedChannelId!;
-}
+// Read from environment so we can configure per-deploy (Vercel, local, etc.)
+const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY as string | undefined;
+const YOUTUBE_CHANNEL_ID = import.meta.env.VITE_YOUTUBE_CHANNEL_ID as string | undefined;
 
 export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]> {
-  // Try local backend first
-  while (true) {
+  // Safety guard: avoid hard failures in UI if env is misconfigured.
+  if (!YOUTUBE_API_KEY || !YOUTUBE_CHANNEL_ID) {
+    console.error(
+      "Missing VITE_YOUTUBE_API_KEY or VITE_YOUTUBE_CHANNEL_ID. Returning empty video list."
+    );
+    return [];
+  }
+
+  // 1) Try local backend first **only** when explicitly configured.
+  // This is ideal for non-Vercel Node hosts (Render/Railway) where
+  // we want caching and to keep the API key off the client.
+  const explicitApiBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  if (explicitApiBase) {
     try {
-      const apiBase = getApiBase();
-      const localRes = await fetch(`${apiBase}/api/videos?maxResults=${maxResults}`);
-      
+      const localRes = await fetch(
+        `${explicitApiBase}/api/videos?maxResults=${maxResults}`
+      );
+
       if (localRes.ok) {
         const videos = await localRes.json();
         if (Array.isArray(videos) && videos.length > 0) {
           return videos;
         }
       } else if (localRes.status === 503) {
-        // Backend is warming up its cache, wait a second and retry
-        console.log("Backend cache is warming up, retrying in 1s...");
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        continue;
+        console.log("Backend cache warming up, falling back to YouTube API.");
       } else {
-        // Some other error, break out and use fallback
-        break;
+        console.warn(
+          "Local video API returned non-ok status, falling back to YouTube API:",
+          localRes.status
+        );
       }
     } catch (err) {
-      console.warn("Local video API failed, falling back to Google API:", err);
-      break;
+      console.warn("Local video API failed, falling back to YouTube API:", err);
     }
   }
 
-  console.log("Falling back to standard Google API request");
-  // Fallback to Google API
-  const channelId = await getChannelId();
-  
+  // 2) Call YouTube Data API v3 directly (optimized for Vercel/browser)
+  const searchParams = new URLSearchParams({
+    part: "snippet",
+    channelId: YOUTUBE_CHANNEL_ID,
+    order: "date",
+    type: "video",
+    maxResults: String(maxResults),
+    key: YOUTUBE_API_KEY,
+  });
+
   const res = await fetch(
-    `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&type=video&maxResults=${maxResults}&key=${YOUTUBE_API_KEY}`
+    `https://www.googleapis.com/youtube/v3/search?${searchParams.toString()}`
   );
   
   if (!res.ok) {
@@ -75,9 +72,9 @@ export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]
   }
 
   const data = await res.json();
-  
+
   if (!data.items?.length) return [];
-  
+
   return data.items
     .map((item: any, index: number) => {
       const videoId = item.id?.videoId;
