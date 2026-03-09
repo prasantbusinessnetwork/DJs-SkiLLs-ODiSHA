@@ -1,12 +1,10 @@
-import { Loader2, Search, ArrowLeft } from "lucide-react";
+import { Loader2, Search, ArrowLeft, Download, Play } from "lucide-react";
 import { useYouTubeVideos } from "@/hooks/useYouTubeVideos";
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import LazyImage from "@/components/LazyImage";
-
-
+import { getApiBase } from "@/lib/utils";
 import { YouTubeVideo } from "@/lib/youtube";
-import { Play } from "lucide-react";
 
 interface VideoItemProps {
   video: YouTubeVideo;
@@ -70,12 +68,25 @@ const VideoItem = ({ video }: VideoItemProps) => {
         </div>
 
         <div className="mt-1 flex items-center justify-between text-[0.7rem] text-muted-foreground">
-          <button
-            onClick={() => window.open(video.youtubeUrl, "_blank", "noopener,noreferrer")}
-            className="rounded-full bg-background/20 border border-white/10 px-3 py-1 text-[0.7rem] font-semibold text-foreground shadow-sm transition hover:bg-white/10"
-          >
-            Watch on YT
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => window.open(video.youtubeUrl, "_blank", "noopener,noreferrer")}
+              className="rounded-full bg-background/20 border border-white/10 px-3 py-1 text-[0.7rem] font-semibold text-foreground shadow-sm transition hover:bg-white/10"
+            >
+              Watch
+            </button>
+            <button
+              onClick={() => {
+                const apiBase = getApiBase();
+                const url = `${apiBase}/api/download?videoId=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
+                window.location.href = url;
+              }}
+              className="flex items-center gap-1 rounded-full bg-destructive px-3 py-1 text-[0.7rem] font-bold text-destructive-foreground transition hover:opacity-80"
+            >
+              <Download className="h-3.5 w-3.5" />
+              MP3
+            </button>
+          </div>
           <span className="text-[0.65rem] uppercase tracking-[0.18em] text-muted-foreground/80">
             FEEL THE <span className="text-destructive">FREQ</span>
           </span>
