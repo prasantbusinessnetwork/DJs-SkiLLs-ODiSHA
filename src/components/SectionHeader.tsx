@@ -11,7 +11,7 @@ const SectionHeader = ({ icon, title }: SectionHeaderProps) => {
   const lowerTitle = title.toLowerCase();
 
   const showViewAll =
-    lowerTitle.includes("all videos") || lowerTitle.includes("latest videos");
+    lowerTitle.includes("all videos") || lowerTitle.includes("latest");
 
   const handleViewAll = () => {
     // Latest + All both redirect to the full library page
