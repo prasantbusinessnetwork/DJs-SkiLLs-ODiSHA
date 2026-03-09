@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "server": "node server.mjs"
+    "server": "node server.mjs",
+    "start": "node server.mjs"
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",

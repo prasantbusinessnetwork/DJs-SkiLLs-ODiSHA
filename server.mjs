@@ -17,8 +17,11 @@ app.use(cors({
 }));
 
 // Paths and Config
-const YTDLP_PATH = path.join(__dirname, "yt-dlp.exe");
-const FFMPEG_PATH = path.join(__dirname, "node_modules", "ffmpeg-static", "ffmpeg.exe");
+const isWin = process.platform === "win32";
+const YTDLP_PATH = isWin ? path.join(__dirname, "yt-dlp.exe") : "yt-dlp";
+const FFMPEG_PATH = isWin 
+  ? path.join(__dirname, "node_modules", "ffmpeg-static", "ffmpeg.exe")
+  : "ffmpeg";
 const DOWNLOADS_DIR = path.join(__dirname, "downloads");
 const CHANNEL_ID = "UC8FEwv0WXF5db-pIs8uJkag";
 const CHANNEL_URL = `https://www.youtube.com/channel/${CHANNEL_ID}/videos`;
