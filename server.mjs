@@ -28,8 +28,8 @@ if (!fs.existsSync(DOWNLOADS_DIR)) {
 }
 
 // YouTube Data API
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
-const YOUTUBE_CHANNEL_ID = process.env.CHANNEL_ID || CHANNEL_ID;
+const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
+const YOUTUBE_CHANNEL_ID = process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || CHANNEL_ID;
 
 // Supabase (optional)
 const SUPABASE_URL = process.env.SUPABASE_URL;

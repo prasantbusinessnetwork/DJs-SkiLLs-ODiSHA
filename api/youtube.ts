@@ -9,17 +9,17 @@ export interface YouTubeVideo {
 }
 
 export default async function handler(req: any, res: any) {
-  const apiKey = process.env.NEXT_PUBLIC_YT_API_KEY || process.env.YOUTUBE_API_KEY;
-  const channelId = process.env.NEXT_PUBLIC_YT_CHANNEL_ID || process.env.YOUTUBE_CHANNEL_ID;
-  const { maxResults = 50 } = req.query;
+  const API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
+  const CHANNEL_ID = process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID;
+  const { maxResults = 6 } = req.query;
 
-  if (!apiKey || !channelId) {
+  if (!API_KEY || !CHANNEL_ID) {
     console.error("Missing YouTube API Key or Channel ID in environment variables");
     return res.status(500).json({ error: "Server configuration error" });
   }
 
   try {
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet,id&channelId=${channelId}&order=date&maxResults=${maxResults}&key=${apiKey}`;
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&order=date&maxResults=${maxResults}&type=video&key=${API_KEY}`;
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -31,10 +31,10 @@ export default async function handler(req: any, res: any) {
     const data = await response.json();
     
     const videos: YouTubeVideo[] = data.items
-      .filter((item: any) => item.id.kind === "youtube#video")
       .map((item: any, index: number) => {
-        const videoId = item.id.videoId;
+        const videoId = item.id?.videoId;
         const snippet = item.snippet;
+        if (!videoId || !snippet) return null;
 
         // Skip deleted/private videos
         const title = snippet.title || "";
