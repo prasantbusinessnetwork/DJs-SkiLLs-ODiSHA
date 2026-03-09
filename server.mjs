@@ -187,17 +187,6 @@ app.get("/api/download", async (req, res) => {
       safeTitle = fetchedTitle || videoId;
     }
 
-    const encodedFilename = encodeURIComponent(`${safeTitle}.mp3`).replace(/'/g, "%27");
-    res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"; filename*=UTF-8''${encodedFilename}`);
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Cache-Control", "no-store");
-    res.setHeader("Accept-Ranges", "bytes");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.setHeader("Transfer-Encoding", "chunked");
-    res.setHeader("Content-Transfer-Encoding", "binary");
-    res.flushHeaders(); 
-
     if (supabase) {
       supabase.from("downloads").insert({
         video_id: videoId,
@@ -208,12 +197,29 @@ app.get("/api/download", async (req, res) => {
     }
 
     const filePath = path.join(DOWNLOADS_DIR, `${videoId}.mp3`);
+    
+    // 1. Check Cache First
     if (fs.existsSync(filePath)) {
       console.log(`[Download] Serving cached file for ${videoId}`);
-      return res.sendFile(filePath);
+      const encodedFilename = encodeURIComponent(`${safeTitle}.mp3`).replace(/'/g, "%27");
+      return res.download(filePath, `${safeTitle}.mp3`, {
+        headers: {
+          "Content-Type": "audio/mpeg",
+          "Cache-Control": "public, max-age=3600",
+          "Accept-Ranges": "bytes"
+        }
+      });
     }
 
+    // 2. Stream if not cached
     console.log(`[Download] Streaming and caching ${videoId}`);
+    const encodedFilename = encodeURIComponent(`${safeTitle}.mp3`).replace(/'/g, "%27");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"; filename*=UTF-8''${encodedFilename}`);
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Transfer-Encoding", "chunked");
+    res.setHeader("Connection", "keep-alive");
+
     const ytDlp = spawn(YTDLP_PATH, [
       "-x", "--audio-format", "mp3", "--audio-quality", "192K", "--ffmpeg-location", FFMPEG_PATH,
       "--no-check-certificate", "--no-cache-dir", "--no-part",
@@ -222,18 +228,25 @@ app.get("/api/download", async (req, res) => {
     ]);
 
     ytDlp.stdout.pipe(res);
+    
+    // Also save to cache for next time
     const fileStream = fs.createWriteStream(filePath);
     ytDlp.stdout.pipe(fileStream);
 
     ytDlp.on("close", (code) => {
       if (code !== 0) {
+        console.error(`yt-dlp failed with code ${code}`);
         if (!res.headersSent) res.status(500).json({ error: "Failed to download audio" });
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       }
       if (!res.writableEnded) res.end();
     });
 
-    req.on("close", () => { ytDlp.kill(); });
+    req.on("close", () => { 
+      if (!res.writableEnded) {
+        ytDlp.kill(); 
+      }
+    });
   } catch (err) {
     console.error("Download error:", err.message);
     if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
