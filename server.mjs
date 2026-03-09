@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 app.use(cors({
-  origin: "*",
+  origin: ["http://localhost:8080", "https://djs-skills-odisha.vercel.app", "*"],
   exposedHeaders: ["Content-Disposition", "Content-Type", "Content-Length"],
 }));
 
@@ -30,9 +30,9 @@ if (!fs.existsSync(DOWNLOADS_DIR)) {
   fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
 }
 
-// YouTube Data API
-const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
-const YOUTUBE_CHANNEL_ID = process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || CHANNEL_ID;
+// YouTube Data API - Prioritize Railway-style naming
+const YOUTUBE_API_KEY = process.env.YT_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
+const YOUTUBE_CHANNEL_ID = process.env.CHANNEL_ID || process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || CHANNEL_ID;
 
 // Supabase (optional)
 const SUPABASE_URL = process.env.SUPABASE_URL;
