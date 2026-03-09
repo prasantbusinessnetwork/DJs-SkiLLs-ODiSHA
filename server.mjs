@@ -93,7 +93,7 @@ function fetchVideosBackground() {
   
   const ytDlp = spawn(YTDLP_PATH, [
     "--flat-playlist",
-    "--playlist-items", "1-50", 
+    "--playlist-items", "1-500", 
     "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
     "--no-check-certificate",
     "--print", "%(id)s|%(title)s|%(uploader)s|%(upload_date)s",
@@ -110,6 +110,11 @@ function fetchVideosBackground() {
     const lines = output.trim().split("\n").filter(line => line.includes("|"));
     const videos = lines.map(line => {
       const [id, title, uploader, date] = line.split("|");
+      // Format 20240101 into 2024-01-01
+      const formattedDate = date && date.length === 8 
+        ? `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`
+        : new Date().toISOString();
+
       return {
         videoId: id,
         title: title,
@@ -117,7 +122,7 @@ function fetchVideosBackground() {
         tag: "Remix",
         youtubeUrl: `https://www.youtube.com/watch?v=${id}`,
         thumbnail: `https://img.youtube.com/vi/${id}/mqdefault.jpg`,
-        publishedAt: date
+        publishedAt: formattedDate
       };
     });
 
@@ -131,14 +136,14 @@ setInterval(fetchVideosBackground, 5 * 60 * 1000);
 fetchVideosBackground();
 
 app.get("/api/videos", async (req, res) => {
-  const maxResults = parseInt(req.query.maxResults) || 15;
+  const maxResults = parseInt(req.query.maxResults) || 500;
   if (videoCache.data && videoCache.data.length > 0) return res.json(videoCache.data.slice(0, maxResults));
   return res.status(503).json({ error: "Cache warming up" });
 });
 
 // Alias for compatibility with remote latest-videos endpoint
 app.get("/api/latest-videos", async (req, res) => {
-  const maxResults = parseInt(req.query.maxResults) || 15;
+  const maxResults = parseInt(req.query.maxResults) || 500;
   if (videoCache.data && videoCache.data.length > 0) return res.json({ videos: videoCache.data.slice(0, maxResults), cached: true });
   return res.status(503).json({ error: "Cache warming up" });
 });

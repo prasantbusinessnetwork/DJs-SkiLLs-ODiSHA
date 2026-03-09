@@ -26,7 +26,7 @@ const fallbackMixes = [
 
 const Index = () => {
   // Fetch a reasonable number of videos for the homepage to keep initial load fast
-  const { data: videos, isLoading, isError } = useYouTubeVideos(6);
+  const { data: videos, isLoading, isError } = useYouTubeVideos(500);
   const isMobile = useIsMobile();
 
   // Split videos into sections

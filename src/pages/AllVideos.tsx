@@ -23,7 +23,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
         {playing ? (
           <iframe
             className="absolute inset-0 w-full h-full"
-            src={`https://www.youtube-nocookie.com/embed/${video.videoId}?autoplay=1&rel=0&modestbranding=1`}
+            src={`https://www.youtube.com/embed/${video.videoId}?autoplay=1&rel=0&modestbranding=1`}
             title={video.title}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
@@ -43,12 +43,12 @@ const VideoItem = ({ video }: VideoItemProps) => {
             </div>
             
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent opacity-60" />
-            <div className="absolute left-3 top-3 rounded-full bg-background/80 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {new Date(video.publishedAt).toLocaleDateString("en-IN", {
+            <div className="absolute left-3 top-3 rounded-full bg-background/80 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground text-center">
+              {video.publishedAt ? new Date(video.publishedAt).toLocaleDateString("en-IN", {
                 day: "2-digit",
                 month: "short",
                 year: "numeric",
-              })}
+              }) : "RECENT"}
             </div>
           </div>
         )}
@@ -86,7 +86,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
 };
 
 const AllVideos = () => {
-  const { data: videos, isLoading, isError } = useYouTubeVideos(50);
+  const { data: videos, isLoading, isError } = useYouTubeVideos(500);
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
 

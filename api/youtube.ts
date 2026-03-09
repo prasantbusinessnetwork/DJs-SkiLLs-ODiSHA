@@ -11,7 +11,7 @@ export interface YouTubeVideo {
 export default async function handler(req: any, res: any) {
   const apiKey = process.env.NEXT_PUBLIC_YT_API_KEY || process.env.YOUTUBE_API_KEY;
   const channelId = process.env.NEXT_PUBLIC_YT_CHANNEL_ID || process.env.YOUTUBE_CHANNEL_ID;
-  const { maxResults = 6 } = req.query;
+  const { maxResults = 50 } = req.query;
 
   if (!apiKey || !channelId) {
     console.error("Missing YouTube API Key or Channel ID in environment variables");
