@@ -30,6 +30,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
     setDlState("preparing");
     try {
       const res = await fetch(prepareUrl);
+      if (!res.ok) throw new Error("Prepare failed");
       const data = await res.json();
       if (data.status === "ready") {
         setDlState("ready");
@@ -40,6 +41,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
       pollRef.current = setInterval(async () => {
         try {
           const s = await fetch(statusUrl);
+          if (!s.ok) throw new Error("Status failed");
           const sd = await s.json();
           if (sd.status === "ready") {
             stopPolling(); setDlState("ready");

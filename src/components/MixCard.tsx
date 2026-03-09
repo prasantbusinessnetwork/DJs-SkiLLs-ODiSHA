@@ -40,6 +40,7 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
 
     try {
       const res = await fetch(prepareUrl);
+      if (!res.ok) throw new Error("Prepare failed");
       const data = await res.json();
 
       if (data.status === "ready") {
@@ -54,6 +55,7 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
       pollRef.current = setInterval(async () => {
         try {
           const statusRes = await fetch(statusUrl);
+          if (!statusRes.ok) throw new Error("Status check failed");
           const statusData = await statusRes.json();
 
           if (statusData.status === "ready") {
