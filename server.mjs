@@ -187,13 +187,14 @@ app.get("/api/download", async (req, res) => {
       safeTitle = fetchedTitle || videoId;
     }
 
+    const encodedFilename = encodeURIComponent(`${safeTitle}.mp3`).replace(/'/g, "%27");
     res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"; filename*=UTF-8''${encodedFilename}`);
     res.setHeader("Content-Type", "audio/mpeg");
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Accept-Ranges", "bytes");
     res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no"); // Disable buffering for Nginx proxies (Railway/Render)
-    res.flushHeaders(); // Tell the browser we are ready IMMEDIATELY
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders(); 
 
     if (supabase) {
       supabase.from("downloads").insert({
