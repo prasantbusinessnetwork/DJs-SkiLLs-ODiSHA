@@ -125,16 +125,7 @@ const Index = () => {
         )}
 
         {latestVideos.length > 0 && (
-          <section className="mb-12">
-            <h2 className="mb-4 font-display text-2xl font-bold text-foreground">
-              Latest from YouTube
-            </h2>
-            <p className="mb-6 text-sm text-muted-foreground">
-              Automatically fetched from the official DJs SkiLLs ODiSHA YouTube
-              channel.
-            </p>
-            <LatestVideosGrid />
-          </section>
+          <MixSection icon="🔥" title="Latest from YouTube" mixes={latestVideos} />
         )}
         {allOtherVideos.length > 0 && (
           <MixSection icon="🎧" title="All Videos" mixes={allOtherVideos} />
