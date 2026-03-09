@@ -176,14 +176,21 @@ app.get("/api/status", (req, res) => {
   const { videoId } = req.query;
   if (!videoId) return res.status(400).json({ error: "videoId is required" });
 
+  const job = prepareJobs.get(videoId);
   const filePath = path.join(DOWNLOADS_DIR, `${videoId}.mp3`);
 
-  if (fs.existsSync(filePath)) {
-    prepareJobs.set(videoId, "ready");
-    return res.json({ status: "ready", videoId });
+  // If the file exists but we haven't tracked it, consider it 'ready' only if it has content
+  if (!job && fs.existsSync(filePath)) {
+    const stats = fs.statSync(filePath);
+    if (stats.size > 1000) { // arbitrary size check to ensure it's not a dummy file
+      prepareJobs.set(videoId, "ready");
+      return res.json({ status: "ready", videoId });
+    }
   }
 
-  const job = prepareJobs.get(videoId);
+  if (job === "ready") {
+    return res.json({ status: "ready", videoId });
+  }
   if (job === "failed") {
     return res.json({ status: "failed", videoId });
   }
@@ -206,12 +213,15 @@ app.get("/api/download", (req, res) => {
     ? sanitizeFileName(title)
     : videoId;
 
-  if (fs.existsSync(filePath)) {
+  const job = prepareJobs.get(videoId);
+
+  // ONLY serve if we know it's ready. If it's still preparing, tell the client.
+  if (job === "ready" && fs.existsSync(filePath)) {
     console.log(`[Download] Serving cached file for ${videoId}`);
     return res.download(filePath, `${safeTitle}.mp3`);
   }
 
-  // File not ready — start preparing and tell client to poll
+  // File not ready or job failed — start preparing and tell client to poll
   res.status(202).json({ status: "preparing", message: "File is being prepared. Please poll /api/status." });
 });
 
