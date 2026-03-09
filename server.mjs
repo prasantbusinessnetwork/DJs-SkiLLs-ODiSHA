@@ -194,6 +194,8 @@ app.get("/api/download", async (req, res) => {
     res.setHeader("Accept-Ranges", "bytes");
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
+    res.setHeader("Transfer-Encoding", "chunked");
+    res.setHeader("Content-Transfer-Encoding", "binary");
     res.flushHeaders(); 
 
     if (supabase) {
@@ -214,7 +216,7 @@ app.get("/api/download", async (req, res) => {
     console.log(`[Download] Streaming and caching ${videoId}`);
     const ytDlp = spawn(YTDLP_PATH, [
       "-x", "--audio-format", "mp3", "--audio-quality", "192K", "--ffmpeg-location", FFMPEG_PATH,
-      "--no-check-certificate", "--no-cache-dir",
+      "--no-check-certificate", "--no-cache-dir", "--no-part",
       "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
       "-o", "-", videoUrl
     ]);

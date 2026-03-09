@@ -79,7 +79,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
               onClick={() => {
                 const apiBase = getApiBase();
                 const url = `${apiBase}/api/download?videoId=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
-                window.location.href = url;
+                window.open(url, "_blank");
               }}
               className="flex items-center gap-1 rounded-full bg-destructive px-3 py-1 text-[0.7rem] font-bold text-destructive-foreground transition hover:opacity-80"
             >

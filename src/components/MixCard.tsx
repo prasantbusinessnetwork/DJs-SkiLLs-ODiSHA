@@ -26,9 +26,8 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     const url = `${apiBase}/api/download?videoId=${encodeURIComponent(
       videoId
     )}&title=${encodeURIComponent(title)}`;
-    // Navigate in the same tab so mobile browsers treat this as a direct
-    // user action and start the download instead of blocking a new tab.
-    window.location.href = url;
+    // Use window.open with _blank for mobile stability to trigger external download
+    window.open(url, "_blank");
   };
 
   const handlePlay = () => {
