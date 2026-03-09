@@ -69,6 +69,7 @@ const MixSection = ({ icon, title, mixes }: MixSectionProps) => {
         )}
 
         <div
+          id="youtube-videos"
           ref={scrollRef}
           onScroll={updateScrollState}
           className="flex gap-3 sm:gap-4 overflow-x-auto pb-4 scrollbar-hide scroll-smooth"
