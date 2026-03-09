@@ -10,26 +10,34 @@ export interface YouTubeVideo {
   publishedAt: string;
 }
 
-// Frontend helper: always go through our backend to keep the API key secret.
 export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]> {
   const apiBase = getApiBase();
-  const url = new URL(`${apiBase}/api/latest-videos`);
-  url.searchParams.set("maxResults", String(maxResults));
-
-  const res = await fetch(url.toString());
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    console.error("Backend fetchLatestVideos error:", errorData);
-    throw new Error(`Backend error: ${res.status}`);
+  
+  // 1. Try Local/Custom Backend first (fastest)
+  try {
+    const url = new URL(`${apiBase}/api/latest-videos`);
+    url.searchParams.set("maxResults", String(maxResults));
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(3000) });
+    
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.videos)) return data.videos;
+      if (Array.isArray(data)) return data; // Compatibility with my original format
+    }
+  } catch (e) {
+    console.warn("Local backend failed, checking Vercel serverless route...");
   }
 
-  const data = await res.json();
-
-  if (!data || !Array.isArray(data.videos)) {
-    console.warn("Backend /api/latest-videos returned unexpected shape:", data);
-    return [];
+  // 2. Try Vercel Serverless API Route (Vercel deployments)
+  try {
+    const vercelRes = await fetch(`/api/youtube?maxResults=${maxResults}`);
+    if (vercelRes.ok) {
+      const videos = await vercelRes.json();
+      if (Array.isArray(videos)) return videos;
+    }
+  } catch (e) {
+    console.error("Vercel serverless fallback failed:", e);
   }
 
-  return data.videos as YouTubeVideo[];
+  return [];
 }
