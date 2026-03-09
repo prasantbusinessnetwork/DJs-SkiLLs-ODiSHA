@@ -1,10 +1,12 @@
-import { Loader2, Search, ArrowLeft, Download, Play } from "lucide-react";
+import { Loader2, Search, ArrowLeft, Download, Play, CheckCircle } from "lucide-react";
 import { useYouTubeVideos } from "@/hooks/useYouTubeVideos";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import LazyImage from "@/components/LazyImage";
 import { getApiBase } from "@/lib/utils";
 import { YouTubeVideo } from "@/lib/youtube";
+
+type DownloadState = "idle" | "preparing" | "ready" | "failed";
 
 interface VideoItemProps {
   video: YouTubeVideo;
@@ -12,6 +14,45 @@ interface VideoItemProps {
 
 const VideoItem = ({ video }: VideoItemProps) => {
   const [playing, setPlaying] = useState(false);
+  const [dlState, setDlState] = useState<DownloadState>("idle");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const apiBase = getApiBase();
+
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  };
+
+  const handleDownload = async () => {
+    if (dlState === "preparing") return;
+    const prepareUrl = `${apiBase}/api/prepare?videoId=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
+    const statusUrl = `${apiBase}/api/status?videoId=${encodeURIComponent(video.videoId)}`;
+    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
+    setDlState("preparing");
+    try {
+      const res = await fetch(prepareUrl);
+      const data = await res.json();
+      if (data.status === "ready") {
+        setDlState("ready");
+        window.location.href = downloadUrl;
+        setTimeout(() => setDlState("idle"), 3000);
+        return;
+      }
+      pollRef.current = setInterval(async () => {
+        try {
+          const s = await fetch(statusUrl);
+          const sd = await s.json();
+          if (sd.status === "ready") {
+            stopPolling(); setDlState("ready");
+            window.location.href = downloadUrl;
+            setTimeout(() => setDlState("idle"), 3000);
+          } else if (sd.status === "failed") {
+            stopPolling(); setDlState("failed");
+            setTimeout(() => setDlState("idle"), 4000);
+          }
+        } catch { stopPolling(); setDlState("failed"); setTimeout(() => setDlState("idle"), 4000); }
+      }, 2500);
+    } catch { setDlState("failed"); setTimeout(() => setDlState("idle"), 4000); }
+  };
 
   return (
     <article
@@ -76,15 +117,19 @@ const VideoItem = ({ video }: VideoItemProps) => {
               Watch
             </button>
             <button
-              onClick={() => {
-                const apiBase = getApiBase();
-                const url = `${apiBase}/api/download?videoId=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
-                window.open(url, "_blank");
-              }}
-              className="flex items-center gap-1 rounded-full bg-destructive px-3 py-1 text-[0.7rem] font-bold text-destructive-foreground transition hover:opacity-80"
+              onClick={handleDownload}
+              disabled={dlState === "preparing"}
+              className={`flex items-center gap-1 rounded-full px-3 py-1 text-[0.7rem] font-bold transition hover:opacity-80
+                ${dlState === "ready" ? "bg-green-600 text-white" :
+                  dlState === "failed" ? "bg-gray-500 text-white" :
+                  "bg-destructive text-destructive-foreground"}
+                ${dlState === "preparing" ? "opacity-70 cursor-wait" : ""}
+              `}
             >
-              <Download className="h-3.5 w-3.5" />
-              MP3
+              {dlState === "preparing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> :
+               dlState === "ready" ? <CheckCircle className="h-3.5 w-3.5" /> :
+               <Download className="h-3.5 w-3.5" />}
+              {dlState === "preparing" ? "Preparing..." : dlState === "ready" ? "Done!" : dlState === "failed" ? "Failed" : "MP3"}
             </button>
           </div>
           <span className="text-[0.65rem] uppercase tracking-[0.18em] text-muted-foreground/80">

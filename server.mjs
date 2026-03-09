@@ -12,14 +12,14 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 app.use(cors({
-  origin: ["http://localhost:8080", "https://djs-skills-odisha.vercel.app", "*"],
+  origin: "*",
   exposedHeaders: ["Content-Disposition", "Content-Type", "Content-Length"],
 }));
 
 // Paths and Config
 const isWin = process.platform === "win32";
 const YTDLP_PATH = isWin ? path.join(__dirname, "yt-dlp.exe") : "yt-dlp";
-const FFMPEG_PATH = isWin 
+const FFMPEG_PATH = isWin
   ? path.join(__dirname, "node_modules", "ffmpeg-static", "ffmpeg.exe")
   : "ffmpeg";
 const DOWNLOADS_DIR = path.join(__dirname, "downloads");
@@ -30,7 +30,7 @@ if (!fs.existsSync(DOWNLOADS_DIR)) {
   fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
 }
 
-// YouTube Data API - Prioritize Railway-style naming
+// YouTube Data API - Support both Railway and Vercel env var names
 const YOUTUBE_API_KEY = process.env.YT_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
 const YOUTUBE_CHANNEL_ID = process.env.CHANNEL_ID || process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || CHANNEL_ID;
 
@@ -44,14 +44,11 @@ const supabase =
       })
     : null;
 
-let videoCache = {
-  data: null,
-  timestamp: 0,
-  ttl: 10 * 60 * 1000
-};
-
+let videoCache = { data: null, timestamp: 0, ttl: 10 * 60 * 1000 };
 let fetching = false;
-let downloadingQueue = new Set();
+
+// Track jobs currently being prepared: videoId -> "preparing" | "ready" | "failed"
+const prepareJobs = new Map();
 
 function sanitizeFileName(raw) {
   return raw
@@ -61,43 +58,14 @@ function sanitizeFileName(raw) {
     .slice(0, 80);
 }
 
-function downloadInBackground(videoId, title) {
-  if (downloadingQueue.has(videoId)) return;
-  const filePath = path.join(DOWNLOADS_DIR, `${videoId}.mp3`);
-  if (fs.existsSync(filePath)) return;
-
-  console.log(`[Auto-Download] Starting background download for: ${title} (${videoId})`);
-  downloadingQueue.add(videoId);
-
-  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const ytDlp = spawn(YTDLP_PATH, [
-    "-x",
-    "--audio-format", "mp3",
-    "--audio-quality", "192K",
-    "--ffmpeg-location", FFMPEG_PATH,
-    "--no-check-certificate",
-    "--no-cache-dir",
-    "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "-o", filePath,
-    videoUrl
-  ]);
-
-  ytDlp.on("close", (code) => {
-    downloadingQueue.delete(videoId);
-    if (code === 0) console.log(`[Auto-Download] Successfully archived: ${title}`);
-    else console.error(`[Auto-Download] Failed to download ${videoId}, exit code ${code}`);
-  });
-}
-
+// ---- Background Channel Video Fetch ----
 function fetchVideosBackground() {
   if (fetching) return;
   fetching = true;
-  console.log("Fetching fresh videos from YouTube in background...");
-  
+
   const ytDlp = spawn(YTDLP_PATH, [
-    "--flat-playlist",
-    "--playlist-items", "1-500", 
-    "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "--flat-playlist", "--playlist-items", "1-500",
+    "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "--no-check-certificate",
     "--print", "%(id)s|%(title)s|%(uploader)s|%(upload_date)s",
     CHANNEL_URL
@@ -113,16 +81,11 @@ function fetchVideosBackground() {
     const lines = output.trim().split("\n").filter(line => line.includes("|"));
     const videos = lines.map(line => {
       const [id, title, uploader, date] = line.split("|");
-      // Format 20240101 into 2024-01-01
-      const formattedDate = date && date.length === 8 
+      const formattedDate = date && date.length === 8
         ? `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`
         : new Date().toISOString();
-
       return {
-        videoId: id,
-        title: title,
-        artist: uploader,
-        tag: "Remix",
+        videoId: id, title, artist: uploader, tag: "Remix",
         youtubeUrl: `https://www.youtube.com/watch?v=${id}`,
         thumbnail: `https://img.youtube.com/vi/${id}/mqdefault.jpg`,
         publishedAt: formattedDate
@@ -130,130 +93,129 @@ function fetchVideosBackground() {
     });
 
     videoCache = { data: videos, timestamp: Date.now(), ttl: 10 * 60 * 1000 };
-    console.log("Background cache updated successfully");
-    videos.slice(0, 8).forEach(v => downloadInBackground(v.videoId, v.title));
+    console.log(`[Cache] Updated with ${videos.length} videos`);
   });
 }
 
 setInterval(fetchVideosBackground, 5 * 60 * 1000);
 fetchVideosBackground();
 
-app.get("/api/videos", async (req, res) => {
-  const maxResults = parseInt(req.query.maxResults) || 500;
-  if (videoCache.data && videoCache.data.length > 0) return res.json(videoCache.data.slice(0, maxResults));
-  return res.status(503).json({ error: "Cache warming up" });
+// ---- API: Video list ----
+app.get("/api/videos", (req, res) => {
+  const max = parseInt(req.query.maxResults) || 500;
+  if (videoCache.data?.length > 0) return res.json(videoCache.data.slice(0, max));
+  res.status(503).json({ error: "Cache warming up, try again in a moment" });
 });
 
-// Alias for compatibility with remote latest-videos endpoint
-app.get("/api/latest-videos", async (req, res) => {
-  const maxResults = parseInt(req.query.maxResults) || 500;
-  if (videoCache.data && videoCache.data.length > 0) return res.json({ videos: videoCache.data.slice(0, maxResults), cached: true });
-  return res.status(503).json({ error: "Cache warming up" });
+app.get("/api/latest-videos", (req, res) => {
+  const max = parseInt(req.query.maxResults) || 500;
+  if (videoCache.data?.length > 0) return res.json({ videos: videoCache.data.slice(0, max), cached: true });
+  res.status(503).json({ error: "Cache warming up, try again in a moment" });
 });
 
-function getVideoTitle(videoUrl) {
-  return new Promise((resolve) => {
-    const proc = spawn(YTDLP_PATH, [
-      "--get-title",
-      "--no-warnings",
-      "--no-check-certificate",
-      "--no-cache-dir",
-      "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-      videoUrl
-    ]);
-    let out = "";
-    proc.stdout.on("data", (d) => { out += d.toString(); });
-    proc.on("close", () => {
-      const raw = out.trim();
-      const safe = sanitizeFileName(raw);
-      resolve(safe || null);
-    });
-    proc.on("error", () => resolve(null));
-    setTimeout(() => { proc.kill(); resolve(null); }, 10000);
-  });
-}
-
-app.get("/api/download", async (req, res) => {
-  try {
-    const { videoId, title } = req.query;
-    if (!videoId || typeof videoId !== "string") return res.status(400).json({ error: "videoId query param is required" });
-
-    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    let safeTitle;
-    if (typeof title === "string" && title.trim()) {
-      safeTitle = sanitizeFileName(title);
-    } else {
-      const fetchedTitle = await getVideoTitle(videoUrl);
-      safeTitle = fetchedTitle || videoId;
-    }
-
-    if (supabase) {
-      supabase.from("downloads").insert({
-        video_id: videoId,
-        title: safeTitle,
-        downloaded_at: new Date().toISOString(),
-      }).then(r => r.error && console.error("Supabase log error:", r.error.message))
-      .catch(e => console.error("Supabase log exception:", e.message));
-    }
-
-    const filePath = path.join(DOWNLOADS_DIR, `${videoId}.mp3`);
-    
-    // 1. Check Cache First
-    if (fs.existsSync(filePath)) {
-      console.log(`[Download] Serving cached file for ${videoId}`);
-      const encodedFilename = encodeURIComponent(`${safeTitle}.mp3`).replace(/'/g, "%27");
-      return res.download(filePath, `${safeTitle}.mp3`, {
-        headers: {
-          "Content-Type": "audio/mpeg",
-          "Cache-Control": "public, max-age=3600",
-          "Accept-Ranges": "bytes"
-        }
-      });
-    }
-
-    // 2. Stream if not cached
-    console.log(`[Download] Streaming and caching ${videoId}`);
-    const encodedFilename = encodeURIComponent(`${safeTitle}.mp3`).replace(/'/g, "%27");
-    res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"; filename*=UTF-8''${encodedFilename}`);
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Cache-Control", "no-store");
-    res.setHeader("Transfer-Encoding", "chunked");
-    res.setHeader("Connection", "keep-alive");
-
-    const ytDlp = spawn(YTDLP_PATH, [
-      "-x", "--audio-format", "mp3", "--audio-quality", "192K", "--ffmpeg-location", FFMPEG_PATH,
-      "--no-check-certificate", "--no-cache-dir", "--no-part",
-      "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-      "-o", "-", videoUrl
-    ]);
-
-    ytDlp.stdout.pipe(res);
-    
-    // Also save to cache for next time
-    const fileStream = fs.createWriteStream(filePath);
-    ytDlp.stdout.pipe(fileStream);
-
-    ytDlp.on("close", (code) => {
-      if (code !== 0) {
-        console.error(`yt-dlp failed with code ${code}`);
-        if (!res.headersSent) res.status(500).json({ error: "Failed to download audio" });
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-      }
-      if (!res.writableEnded) res.end();
-    });
-
-    req.on("close", () => { 
-      if (!res.writableEnded) {
-        ytDlp.kill(); 
-      }
-    });
-  } catch (err) {
-    console.error("Download error:", err.message);
-    if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
+// ---- PHASE 1: Prepare MP3 in background ----
+app.get("/api/prepare", (req, res) => {
+  const { videoId, title } = req.query;
+  if (!videoId || typeof videoId !== "string") {
+    return res.status(400).json({ error: "videoId is required" });
   }
+
+  const filePath = path.join(DOWNLOADS_DIR, `${videoId}.mp3`);
+
+  // Already cached
+  if (fs.existsSync(filePath)) {
+    return res.json({ status: "ready", videoId });
+  }
+
+  // Already being prepared
+  if (prepareJobs.get(videoId) === "preparing") {
+    return res.json({ status: "preparing", videoId });
+  }
+
+  // Start background conversion
+  prepareJobs.set(videoId, "preparing");
+  console.log(`[Prepare] Starting MP3 conversion for ${videoId}`);
+
+  const safeTitle = typeof title === "string" && title.trim()
+    ? sanitizeFileName(title)
+    : videoId;
+
+  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  const ytDlp = spawn(YTDLP_PATH, [
+    "-x", "--audio-format", "mp3", "--audio-quality", "192K",
+    "--ffmpeg-location", FFMPEG_PATH,
+    "--no-check-certificate", "--no-cache-dir", "--no-part",
+    "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "-o", filePath,
+    videoUrl
+  ]);
+
+  ytDlp.on("close", (code) => {
+    if (code === 0 && fs.existsSync(filePath)) {
+      prepareJobs.set(videoId, "ready");
+      console.log(`[Prepare] Ready: ${videoId} (${safeTitle})`);
+      // Log to Supabase
+      if (supabase) {
+        supabase.from("downloads").insert({
+          video_id: videoId, title: safeTitle,
+          downloaded_at: new Date().toISOString(),
+        }).catch(() => {});
+      }
+    } else {
+      prepareJobs.set(videoId, "failed");
+      console.error(`[Prepare] Failed for ${videoId}, exit code ${code}`);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
+  });
+
+  res.json({ status: "preparing", videoId });
+});
+
+// ---- PHASE 2: Poll status ----
+app.get("/api/status", (req, res) => {
+  const { videoId } = req.query;
+  if (!videoId) return res.status(400).json({ error: "videoId is required" });
+
+  const filePath = path.join(DOWNLOADS_DIR, `${videoId}.mp3`);
+
+  if (fs.existsSync(filePath)) {
+    prepareJobs.set(videoId, "ready");
+    return res.json({ status: "ready", videoId });
+  }
+
+  const job = prepareJobs.get(videoId);
+  if (job === "failed") {
+    return res.json({ status: "failed", videoId });
+  }
+  if (job === "preparing") {
+    return res.json({ status: "preparing", videoId });
+  }
+
+  res.json({ status: "not_started", videoId });
+});
+
+// ---- PHASE 3: Serve cached file (instant, no timeout) ----
+app.get("/api/download", (req, res) => {
+  const { videoId, title } = req.query;
+  if (!videoId || typeof videoId !== "string") {
+    return res.status(400).json({ error: "videoId is required" });
+  }
+
+  const filePath = path.join(DOWNLOADS_DIR, `${videoId}.mp3`);
+  const safeTitle = typeof title === "string" && title.trim()
+    ? sanitizeFileName(title)
+    : videoId;
+
+  if (fs.existsSync(filePath)) {
+    console.log(`[Download] Serving cached file for ${videoId}`);
+    return res.download(filePath, `${safeTitle}.mp3`);
+  }
+
+  // File not ready — start preparing and tell client to poll
+  res.status(202).json({ status: "preparing", message: "File is being prepared. Please poll /api/status." });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Download server running on port ${PORT} (0.0.0.0)`);
+  console.log(`Server running on port ${PORT}`);
 });

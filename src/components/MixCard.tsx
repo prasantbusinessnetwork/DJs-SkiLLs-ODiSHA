@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Play, Download } from "lucide-react";
+import { useState, useRef } from "react";
+import { Play, Download, Loader2, CheckCircle } from "lucide-react";
 import { getApiBase } from "../lib/utils";
 import LazyImage from "./LazyImage";
 
@@ -13,21 +13,70 @@ interface MixCardProps {
   videoId?: string;
 }
 
+type DownloadState = "idle" | "preparing" | "ready" | "failed";
+
 const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: MixCardProps) => {
   const [playing, setPlaying] = useState(false);
+  const [dlState, setDlState] = useState<DownloadState>("idle");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const apiBase = getApiBase();
 
-  // Mobile-safe download: use window.open with the API URL so the browser
-  // handles the stream as a download (avoids the mobile anchor+download attribute
-  // being blocked by YouTube's redirect).
-  const handleDownload = (e: React.MouseEvent) => {
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!videoId) return;
-    const url = `${apiBase}/api/download?videoId=${encodeURIComponent(
-      videoId
-    )}&title=${encodeURIComponent(title)}`;
-    // Use window.open with _blank for mobile stability to trigger external download
-    window.open(url, "_blank");
+    if (!videoId || dlState === "preparing") return;
+
+    const prepareUrl = `${apiBase}/api/prepare?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title)}`;
+    const statusUrl = `${apiBase}/api/status?videoId=${encodeURIComponent(videoId)}`;
+    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title)}`;
+
+    setDlState("preparing");
+
+    try {
+      const res = await fetch(prepareUrl);
+      const data = await res.json();
+
+      if (data.status === "ready") {
+        // Already cached — download immediately
+        setDlState("ready");
+        window.location.href = downloadUrl;
+        setTimeout(() => setDlState("idle"), 3000);
+        return;
+      }
+
+      // Start polling
+      pollRef.current = setInterval(async () => {
+        try {
+          const statusRes = await fetch(statusUrl);
+          const statusData = await statusRes.json();
+
+          if (statusData.status === "ready") {
+            stopPolling();
+            setDlState("ready");
+            window.location.href = downloadUrl;
+            setTimeout(() => setDlState("idle"), 3000);
+          } else if (statusData.status === "failed") {
+            stopPolling();
+            setDlState("failed");
+            setTimeout(() => setDlState("idle"), 4000);
+          }
+        } catch {
+          stopPolling();
+          setDlState("failed");
+          setTimeout(() => setDlState("idle"), 4000);
+        }
+      }, 2500);
+
+    } catch {
+      setDlState("failed");
+      setTimeout(() => setDlState("idle"), 4000);
+    }
   };
 
   const handlePlay = () => {
@@ -38,11 +87,21 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     }
   };
 
+  const dlLabel =
+    dlState === "preparing" ? "Preparing..." :
+    dlState === "ready" ? "Done!" :
+    dlState === "failed" ? "Failed" :
+    "Download";
+
+  const dlIcon =
+    dlState === "preparing" ? <Loader2 className="h-3 w-3 animate-spin" /> :
+    dlState === "ready" ? <CheckCircle className="h-3 w-3" /> :
+    <Download className="h-3 w-3" />;
+
   return (
     <div className="group w-[200px] min-w-[200px] sm:w-[260px] sm:min-w-[260px] flex-shrink-0 cursor-pointer">
       <div className="relative overflow-hidden rounded-lg aspect-video">
         {playing && videoId ? (
-          /* Inline lite-embed — iframe only created when user clicks Play */
           <iframe
             className="absolute inset-0 w-full h-full"
             src={`https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1`}
@@ -58,7 +117,6 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
               alt={title}
               className="aspect-video w-full transition-transform duration-300 group-hover:scale-105"
             />
-            {/* Overlay on hover */}
             <div className="absolute inset-0 flex items-center justify-center gap-3 bg-background/50 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary shadow-lg transition-transform hover:scale-110">
                 <Play className="h-5 w-5 fill-primary-foreground text-primary-foreground" />
@@ -67,7 +125,6 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
           </div>
         )}
 
-        {/* Tags */}
         {isNew && (
           <span className="absolute left-2 top-2 rounded bg-destructive px-2 py-0.5 text-xs font-bold text-destructive-foreground z-10">
             NEW
@@ -88,12 +145,17 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
         </div>
         <button
           onClick={handleDownload}
-          className="mt-0.5 flex h-7 items-center gap-1 rounded-full bg-destructive px-2.5 text-[10px] font-bold text-destructive-foreground transition-opacity hover:opacity-80"
+          disabled={!videoId || dlState === "preparing"}
+          className={`mt-0.5 flex h-7 items-center gap-1 rounded-full px-2.5 text-[10px] font-bold transition-opacity
+            ${dlState === "ready" ? "bg-green-600 text-white" :
+              dlState === "failed" ? "bg-gray-500 text-white" :
+              "bg-destructive text-destructive-foreground hover:opacity-80"}
+            ${dlState === "preparing" ? "opacity-70 cursor-wait" : ""}
+          `}
           title="Download MP3"
-          disabled={!videoId}
         >
-          <Download className="h-3 w-3" />
-          Download
+          {dlIcon}
+          {dlLabel}
         </button>
       </div>
     </div>
