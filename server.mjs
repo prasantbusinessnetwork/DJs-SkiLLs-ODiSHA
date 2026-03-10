@@ -223,8 +223,10 @@ app.get("/api/download", (req, res) => {
 
   const job = prepareJobs.get(videoId);
 
-  // ONLY serve if we know it's ready. If it's still preparing, tell the client.
-  if (job === "ready" && fs.existsSync(filePath)) {
+  // Check if file is ready (either tracked in memory or exists on disk)
+  const isReady = job === "ready" || fs.existsSync(filePath);
+
+  if (isReady && fs.existsSync(filePath)) {
     console.log(`[Download] Serving: ${safeTitle}.mp3`);
     return res.download(filePath, `${safeTitle}.mp3`);
   }
