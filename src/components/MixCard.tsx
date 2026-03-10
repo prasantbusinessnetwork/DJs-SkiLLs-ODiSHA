@@ -66,13 +66,10 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
           if (statusData.status === "ready") {
             stopPolling();
             setDlState("ready");
-            const link = document.createElement("a");
-            link.href = downloadUrl;
-            link.setAttribute("download", `${title}.mp3`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            setTimeout(() => setDlState("idle"), 3000);
+            // Mobile browsers block auto-triggering downloads from setInterval.
+            // By changing the state to 'ready', the user can now click the button 
+            // once more to get the file via a direct user-initiated click.
+            setTimeout(() => setDlState("idle"), 8000);
           } else if (statusData.status === "failed") {
             stopPolling();
             setDlState("failed");
@@ -89,6 +86,18 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
       setDlState("failed");
       setTimeout(() => setDlState("idle"), 4000);
     }
+  };
+
+  const handleFinalDownload = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId || "")}&title=${encodeURIComponent(title)}`;
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    // Removing custom 'download' attr to let server headers handle the filename
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setDlState("idle");
   };
 
   const handlePlay = () => {
@@ -156,18 +165,18 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
           </span>
         </div>
         <button
-          onClick={handleDownload}
+          onClick={dlState === "ready" ? handleFinalDownload : handleDownload}
           disabled={!videoId || dlState === "preparing"}
-          className={`mt-0.5 flex h-7 items-center gap-1 rounded-full px-2.5 text-[10px] font-bold transition-opacity
-            ${dlState === "ready" ? "bg-green-600 text-white" :
+          className={`mt-0.5 flex h-7 items-center gap-1 rounded-full px-2.5 text-[10px] font-bold transition-all
+            ${dlState === "ready" ? "bg-green-600 text-white animate-pulse" :
               dlState === "failed" ? "bg-gray-500 text-white" :
                 "bg-destructive text-destructive-foreground hover:opacity-80"}
             ${dlState === "preparing" ? "opacity-70 cursor-wait" : ""}
           `}
-          title="Download MP3"
+          title={dlState === "ready" ? "Click to save MP3" : "Prepare MP3"}
         >
           {dlIcon}
-          {dlLabel}
+          {dlState === "ready" ? "Save MP3" : dlLabel}
         </button>
       </div>
     </div>

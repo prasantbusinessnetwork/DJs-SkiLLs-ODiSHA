@@ -34,13 +34,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
       const data = await res.json();
       if (data.status === "ready") {
         setDlState("ready");
-        const link = document.createElement("a");
-        link.href = downloadUrl;
-        link.setAttribute("download", `${video.title}.mp3`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setTimeout(() => setDlState("idle"), 3000);
+        setTimeout(() => setDlState("idle"), 8000);
         return;
       }
       pollRef.current = setInterval(async () => {
@@ -49,14 +43,9 @@ const VideoItem = ({ video }: VideoItemProps) => {
           if (!s.ok) throw new Error("Status failed");
           const sd = await s.json();
           if (sd.status === "ready") {
-            stopPolling(); setDlState("ready");
-            const link = document.createElement("a");
-            link.href = downloadUrl;
-            link.setAttribute("download", `${video.title}.mp3`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            setTimeout(() => setDlState("idle"), 3000);
+            stopPolling();
+            setDlState("ready");
+            setTimeout(() => setDlState("idle"), 8000);
           } else if (sd.status === "failed") {
             stopPolling(); setDlState("failed");
             setTimeout(() => setDlState("idle"), 4000);
@@ -129,10 +118,18 @@ const VideoItem = ({ video }: VideoItemProps) => {
               Watch
             </button>
             <button
-              onClick={handleDownload}
+              onClick={dlState === "ready" ? () => {
+                const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
+                const link = document.createElement("a");
+                link.href = downloadUrl;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setDlState("idle");
+              } : handleDownload}
               disabled={dlState === "preparing"}
-              className={`flex items-center gap-1 rounded-full px-3 py-1 text-[0.7rem] font-bold transition hover:opacity-80
-                ${dlState === "ready" ? "bg-green-600 text-white" :
+              className={`flex items-center gap-1 rounded-full px-3 py-1 text-[0.7rem] font-bold transition-all hover:opacity-80
+                ${dlState === "ready" ? "bg-green-600 text-white animate-pulse" :
                   dlState === "failed" ? "bg-gray-500 text-white" :
                     "bg-destructive text-destructive-foreground"}
                 ${dlState === "preparing" ? "opacity-70 cursor-wait" : ""}
@@ -141,7 +138,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
               {dlState === "preparing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> :
                 dlState === "ready" ? <CheckCircle className="h-3.5 w-3.5" /> :
                   <Download className="h-3.5 w-3.5" />}
-              {dlState === "preparing" ? "Preparing..." : dlState === "ready" ? "Done!" : dlState === "failed" ? "Failed" : "MP3"}
+              {dlState === "preparing" ? "Preparing..." : dlState === "ready" ? "Save MP3" : dlState === "failed" ? "Failed" : "MP3"}
             </button>
           </div>
           <span className="text-[0.65rem] uppercase tracking-[0.18em] text-muted-foreground/80">

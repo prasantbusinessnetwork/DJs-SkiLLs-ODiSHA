@@ -226,8 +226,6 @@ app.get("/api/download", (req, res) => {
   // ONLY serve if we know it's ready. If it's still preparing, tell the client.
   if (job === "ready" && fs.existsSync(filePath)) {
     console.log(`[Download] Serving: ${safeTitle}.mp3`);
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(safeTitle)}.mp3"`);
     return res.download(filePath, `${safeTitle}.mp3`);
   }
 
