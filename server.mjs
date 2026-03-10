@@ -52,6 +52,8 @@ async function uploadToSupabase(videoId, filePath, safeTitle) {
   } catch (err) { return null; }
 }
 
+let lastError = "";
+
 async function startConversion(videoId, clientTitle) {
   const filePath = path.join(DOWNLOADS_DIR, `${videoId}.mp3`);
   const safeTitle = sanitize(clientTitle || videoId);
@@ -82,11 +84,16 @@ async function startConversion(videoId, clientTitle) {
       jobs.set(videoId, { status: "ready", title: safeTitle, supabaseUrl });
     } else {
       console.error(`[Job] Failed: ${videoId} (Exit Code: ${code})`);
-      if (stderr) console.error(`[yt-dlp Error Output]:\n${stderr}`);
+      if (stderr) {
+        console.error(`[yt-dlp Error Output]:\n${stderr}`);
+        lastError = stderr;
+      }
       jobs.set(videoId, { status: "failed", title: safeTitle });
     }
   });
 }
+
+app.get("/api/debug-last-error", (req, res) => res.send(`<pre>${lastError || "No errors captured yet."}</pre>`));
 
 app.get("/api/prepare", (req, res) => {
   const { videoId, title } = req.query;
