@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -149,6 +150,49 @@ app.get("/api/download", (req, res) => {
   if (job?.supabaseUrl) return res.redirect(job.supabaseUrl);
 
   return res.status(202).json({ status: "preparing", message: "Please poll /api/status" });
+});
+
+// Cache for YouTube video list to avoid burning API quota
+let videoCache = { data: null, fetchedAt: 0 };
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+app.get("/api/latest-videos", async (req, res) => {
+  const maxResults = parseInt(req.query.maxResults) || 15;
+
+  // Return from cache if still fresh
+  if (videoCache.data && (Date.now() - videoCache.fetchedAt) < CACHE_TTL) {
+    return res.json({ videos: videoCache.data.slice(0, maxResults) });
+  }
+
+  if (!YT_API_KEY) {
+    return res.status(500).json({ error: "YT_API_KEY not set on server" });
+  }
+
+  try {
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&maxResults=50&order=date&type=video&key=${YT_API_KEY}`;
+    const response = await fetch(searchUrl);
+    if (!response.ok) throw new Error(`YouTube API error: ${response.status}`);
+    const json = await response.json();
+
+    const videos = (json.items || []).map((item) => ({
+      videoId: item.id.videoId,
+      title: item.snippet.title,
+      artist: item.snippet.channelTitle,
+      tag: "Latest",
+      youtubeUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+      thumbnail: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || "",
+      publishedAt: item.snippet.publishedAt,
+    }));
+
+    videoCache = { data: videos, fetchedAt: Date.now() };
+    console.log(`[Cache] Updated with ${videos.length} videos`);
+    res.json({ videos: videos.slice(0, maxResults) });
+  } catch (err) {
+    console.error("[YouTube API Error]:", err.message);
+    // Return stale cache if available
+    if (videoCache.data) return res.json({ videos: videoCache.data.slice(0, maxResults) });
+    res.status(500).json({ error: "Failed to fetch videos from YouTube" });
+  }
 });
 
 app.get("/api/health", (req, res) => res.json({ status: "ok", jobs: jobs.size }));
