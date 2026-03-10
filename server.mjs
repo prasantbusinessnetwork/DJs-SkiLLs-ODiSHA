@@ -52,9 +52,10 @@ async function uploadToSupabase(videoId, filePath, safeTitle) {
   } catch (err) { return null; }
 }
 
-let lastError = "";
+let lastJobInfo = { videoId: "", code: null, error: "" };
 
 async function startConversion(videoId, clientTitle) {
+  lastJobInfo = { videoId, code: null, error: "" };
   const filePath = path.join(DOWNLOADS_DIR, `${videoId}.mp3`);
   const safeTitle = sanitize(clientTitle || videoId);
 
@@ -78,6 +79,7 @@ async function startConversion(videoId, clientTitle) {
   });
 
   ytDlpProc.on("close", async (code) => {
+    lastJobInfo.code = code;
     if (code === 0 && fs.existsSync(filePath) && fs.statSync(filePath).size > 1024) {
       console.log(`[Job] Success: ${videoId}`);
       const supabaseUrl = await uploadToSupabase(videoId, filePath, safeTitle);
@@ -86,14 +88,14 @@ async function startConversion(videoId, clientTitle) {
       console.error(`[Job] Failed: ${videoId} (Exit Code: ${code})`);
       if (stderr) {
         console.error(`[yt-dlp Error Output]:\n${stderr}`);
-        lastError = stderr;
+        lastJobInfo.error = stderr;
       }
       jobs.set(videoId, { status: "failed", title: safeTitle });
     }
   });
 }
 
-app.get("/api/debug-last-error", (req, res) => res.send(`<pre>${lastError || "No errors captured yet."}</pre>`));
+app.get("/api/debug-last-error", (req, res) => res.json(lastJobInfo));
 
 app.get("/api/prepare", (req, res) => {
   const { videoId, title } = req.query;
