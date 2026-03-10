@@ -110,6 +110,11 @@ async function startConversion(videoId, clientTitle) {
       jobs.set(videoId, { status: "ready", title: safeTitle, supabaseUrl });
     } else {
       console.error(`[Job] Failed: ${videoId} (Exit Code: ${code})\n${stderr}`);
+      try {
+        fs.appendFileSync(path.join(__dirname, "last_error.log"), `[${new Date().toISOString()}] Failed: ${videoId} (Code: ${code})\n${stderr}\n`);
+      } catch (e) {
+        console.error("Failed to write log", e);
+      }
       jobs.set(videoId, { status: "failed", title: safeTitle });
     }
   });
@@ -196,6 +201,9 @@ app.get("/api/latest-videos", async (req, res) => {
 });
 
 app.get("/api/health", (req, res) => res.json({ status: "ok", jobs: jobs.size }));
+app.get("/api/debug-jobs", (req, res) => {
+  res.json({ jobs: Array.from(jobs.entries()) });
+});
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend live on port ${PORT}`);
