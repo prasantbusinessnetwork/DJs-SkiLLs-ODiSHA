@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import { spawn } from "child_process";
 import ffmpegStatic from "ffmpeg-static";
+import ffprobeStatic from "ffprobe-static";
 import { createClient } from "@supabase/supabase-js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -31,7 +32,20 @@ if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR, { recursive: true
 // isWin check for local dev
 const isWin = process.platform === "win32";
 const YTDLP_PATH = isWin ? path.join(__dirname, "yt-dlp.exe") : "yt-dlp";
-const FFMPEG_PATH = isWin ? path.join(__dirname, "node_modules", "ffmpeg-static", "ffmpeg.exe") : ffmpegStatic;
+
+// On Windows, we need the directory containing both ffmpeg.exe and ffprobe.exe
+const FFMPEG_BIN_ROOT = isWin ? path.join(__dirname, "bin") : "/usr/bin";
+const FFMPEG_PATH = isWin ? path.join(FFMPEG_BIN_ROOT, "ffmpeg.exe") : ffmpegStatic;
+
+// Startup check for Windows
+if (isWin) {
+  if (!fs.existsSync(FFMPEG_BIN_ROOT)) fs.mkdirSync(FFMPEG_BIN_ROOT, { recursive: true });
+  const ffmpegExists = fs.existsSync(path.join(FFMPEG_BIN_ROOT, "ffmpeg.exe"));
+  const ffprobeExists = fs.existsSync(path.join(FFMPEG_BIN_ROOT, "ffprobe.exe"));
+  if (!ffmpegExists || !ffprobeExists) {
+    console.warn("⚠️ [Startup] ffmpeg.exe or ffprobe.exe missing in /bin folder. Please ensure they are copied there for local conversion.");
+  }
+}
 
 // Track jobs: videoId -> { status, title, supabaseUrl }
 const jobs = new Map();
@@ -52,17 +66,18 @@ async function uploadToSupabase(videoId, filePath, safeTitle) {
   } catch (err) { return null; }
 }
 
-
 async function startConversion(videoId, clientTitle) {
   const filePath = path.join(DOWNLOADS_DIR, `${videoId}.mp3`);
   const safeTitle = sanitize(clientTitle || videoId);
 
   if (jobs.get(videoId)?.status === "preparing") return;
+
+  console.log(`[Job] Starting: ${videoId} (${safeTitle})`);
   jobs.set(videoId, { status: "preparing", title: safeTitle });
 
-  const ytDlpProc = spawn(YTDLP_PATH, [
+  const args = [
     "-x", "--audio-format", "mp3", "--audio-quality", "192K",
-    "--ffmpeg-location", FFMPEG_PATH,
+    "--ffmpeg-location", FFMPEG_BIN_ROOT,
     "--no-check-certificate", "--no-cache-dir", "--no-part", "--no-playlist",
     "--extractor-args", "youtube:player-client=android,ios",
     "--force-ipv4",
@@ -70,12 +85,24 @@ async function startConversion(videoId, clientTitle) {
     "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "-o", filePath,
     `https://www.youtube.com/watch?v=${videoId}`
-  ]);
+  ];
+
+  const ytDlpProc = spawn(YTDLP_PATH, args);
+
+  let output = "";
+  ytDlpProc.stdout.on("data", (data) => {
+    const str = data.toString();
+    if (str.includes("%")) {
+      const match = str.match(/(\d+\.\d+)%/);
+      if (match) process.stdout.write(`\r[Progress] ${videoId}: ${match[1]}% `);
+    }
+  });
 
   let stderr = "";
   ytDlpProc.stderr.on("data", (data) => stderr += data.toString());
 
   ytDlpProc.on("close", async (code) => {
+    process.stdout.write("\n");
     if (code === 0 && fs.existsSync(filePath) && fs.statSync(filePath).size > 1024) {
       console.log(`[Job] Success: ${videoId}`);
       const supabaseUrl = await uploadToSupabase(videoId, filePath, safeTitle);

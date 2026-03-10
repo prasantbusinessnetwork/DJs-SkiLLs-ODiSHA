@@ -27,3 +27,4 @@ yt-dlp.exe
 *.mp3
 .env
 .env.*
+bin/
