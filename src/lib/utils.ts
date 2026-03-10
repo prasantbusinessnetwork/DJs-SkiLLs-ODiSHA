@@ -7,7 +7,13 @@ export function cn(...inputs: ClassValue[]) {
 
 export function getApiBase() {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
-  if (envUrl && envUrl.trim().length > 0) return envUrl.trim().replace(/\/$/, "");
+  if (envUrl && envUrl.trim().length > 0) {
+    let cleanUrl = envUrl.trim().replace(/\/$/, "");
+    if (!cleanUrl.startsWith("http")) {
+      cleanUrl = `https://${cleanUrl}`;
+    }
+    return cleanUrl;
+  }
 
   // Detect local development environment
   if (typeof window !== "undefined") {
