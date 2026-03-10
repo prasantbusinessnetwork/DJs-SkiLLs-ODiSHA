@@ -63,7 +63,9 @@ async function startConversion(videoId, clientTitle) {
     "-x", "--audio-format", "mp3", "--audio-quality", "192K",
     "--ffmpeg-location", FFMPEG_PATH,
     "--no-check-certificate", "--no-cache-dir", "--no-part", "--no-playlist",
-    "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "--impersonate-client", "chrome",
+    "--add-header", "Accept-Language: en-US,en;q=0.9",
+    "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "-o", filePath,
     `https://www.youtube.com/watch?v=${videoId}`
   ]);
