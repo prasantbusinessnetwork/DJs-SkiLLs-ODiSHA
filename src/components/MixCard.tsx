@@ -48,11 +48,10 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
         setDlState("ready");
         const link = document.createElement("a");
         link.href = downloadUrl;
-        link.setAttribute("download", `${title}.mp3`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        setTimeout(() => setDlState("idle"), 3000);
+        setTimeout(() => setDlState("idle"), 5000);
         return;
       }
 

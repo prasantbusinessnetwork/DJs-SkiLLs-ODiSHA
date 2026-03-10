@@ -34,7 +34,12 @@ const VideoItem = ({ video }: VideoItemProps) => {
       const data = await res.json();
       if (data.status === "ready") {
         setDlState("ready");
-        setTimeout(() => setDlState("idle"), 8000);
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => setDlState("idle"), 5000);
         return;
       }
       pollRef.current = setInterval(async () => {
