@@ -102,44 +102,56 @@ app.get("/api/download", (req, res) => {
 
     console.log(`[Stream] Starting download stream for: ${videoId}`);
 
-    const args = [
-      "-x", "--audio-format", "mp3", "--audio-quality", "192K",
-      "--ffmpeg-location", FFMPEG_BIN_ROOT,
+    const FFMPEG_CMD = isWin ? path.join(FFMPEG_BIN_ROOT, "ffmpeg.exe") : "ffmpeg";
+
+    const ytArgs = [
+      "-f", "bestaudio",
       "--no-warnings", "-q",
       "--no-check-certificate", "--no-cache-dir", "--no-part", "--no-playlist",
-      // Bypass temporary Youtube bans with multiple player-clients
       "--extractor-args", "youtube:player-client=android,web,mweb,ios",
       "--force-ipv4",
       "-o", "-", // Crucial: Streams binary directly to stdout
       `https://www.youtube.com/watch?v=${videoId}`
     ];
 
-    const ytDlpProc = spawn(YTDLP_PATH, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const ffArgs = [
+      "-i", "pipe:0",          // Input from yt-dlp
+      "-f", "mp3",             // Force format to MP3
+      "-b:a", "192k",          // Audio bitrate
+      "pipe:1"                 // Output MP3 to stdout
+    ];
+
+    const ytDlpProc = spawn(YTDLP_PATH, ytArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const ffmpegProc = spawn(FFMPEG_CMD, ffArgs, { stdio: ['pipe', 'pipe', 'ignore'] });
 
     let stderr = "";
     ytDlpProc.stderr.on("data", (data) => {
       stderr += data.toString();
     });
 
-    // Pipe audio natively without writing to disk!
-    ytDlpProc.stdout.pipe(res);
+    // Pipe audio natively to ffmpeg, then buffer MP3 out to network response
+    ytDlpProc.stdout.pipe(ffmpegProc.stdin);
+    ffmpegProc.stdout.pipe(res);
 
     ytDlpProc.on("close", (code) => {
-      if (code === 0) {
-        console.log(`[Stream] Success: ${videoId}`);
-      } else {
-        console.error(`[Stream Failed] ${videoId} (Exit Code: ${code})\n${stderr}`);
-
-        // Write to log for debugging
-        try {
-          fs.appendFileSync(path.join(__dirname, "last_error.log"), `[${new Date().toISOString()}] Stream Failed: ${videoId} (Code: ${code})\n${stderr}\n`);
-        } catch (e) { }
+      if (code !== 0) {
+        console.error(`[yt-dlp Failed] ${videoId} (Exit Code: ${code})\n${stderr}`);
+        try { fs.appendFileSync(path.join(__dirname, "last_error.log"), `[${new Date().toISOString()}] Stream Failed: ${videoId} (Code: ${code})\n${stderr}\n`); } catch (e) { }
 
         if (!res.headersSent) {
           res.status(500).json({ error: "Temporary YouTube block or processing error. Please retry." });
         } else {
+          try { ffmpegProc.kill("SIGKILL"); } catch (e) { }
           res.end();
         }
+      }
+    });
+
+    ffmpegProc.on("close", (code) => {
+      if (code === 0) {
+        console.log(`[Stream] Success: ${videoId} converted to MP3`);
+      } else {
+        console.error(`[Stream] FFmpeg closed with Code ${code} for ${videoId}`);
       }
     });
 
