@@ -52,10 +52,8 @@ async function uploadToSupabase(videoId, filePath, safeTitle) {
   } catch (err) { return null; }
 }
 
-let lastJobInfo = { videoId: "", code: null, error: "" };
 
 async function startConversion(videoId, clientTitle) {
-  lastJobInfo = { videoId, code: null, error: "" };
   const filePath = path.join(DOWNLOADS_DIR, `${videoId}.mp3`);
   const safeTitle = sanitize(clientTitle || videoId);
 
@@ -66,7 +64,7 @@ async function startConversion(videoId, clientTitle) {
     "-x", "--audio-format", "mp3", "--audio-quality", "192K",
     "--ffmpeg-location", FFMPEG_PATH,
     "--no-check-certificate", "--no-cache-dir", "--no-part", "--no-playlist",
-    "--extractor-args", "youtube:player-client=ios,tv",
+    "--extractor-args", "youtube:player-client=android,ios",
     "--force-ipv4",
     "--add-header", "Accept-Language: en-US,en;q=0.9",
     "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -75,28 +73,19 @@ async function startConversion(videoId, clientTitle) {
   ]);
 
   let stderr = "";
-  ytDlpProc.stderr.on("data", (data) => {
-    stderr += data.toString();
-  });
+  ytDlpProc.stderr.on("data", (data) => stderr += data.toString());
 
   ytDlpProc.on("close", async (code) => {
-    lastJobInfo.code = code;
     if (code === 0 && fs.existsSync(filePath) && fs.statSync(filePath).size > 1024) {
       console.log(`[Job] Success: ${videoId}`);
       const supabaseUrl = await uploadToSupabase(videoId, filePath, safeTitle);
       jobs.set(videoId, { status: "ready", title: safeTitle, supabaseUrl });
     } else {
-      console.error(`[Job] Failed: ${videoId} (Exit Code: ${code})`);
-      if (stderr) {
-        console.error(`[yt-dlp Error Output]:\n${stderr}`);
-        lastJobInfo.error = stderr;
-      }
+      console.error(`[Job] Failed: ${videoId} (Exit Code: ${code})\n${stderr}`);
       jobs.set(videoId, { status: "failed", title: safeTitle });
     }
   });
 }
-
-app.get("/api/debug-last-error", (req, res) => res.json(lastJobInfo));
 
 app.get("/api/prepare", (req, res) => {
   const { videoId, title } = req.query;
