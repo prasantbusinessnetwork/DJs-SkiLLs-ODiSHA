@@ -66,10 +66,13 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
           if (statusData.status === "ready") {
             stopPolling();
             setDlState("ready");
-            // Mobile browsers block auto-triggering downloads from setInterval.
-            // By changing the state to 'ready', the user can now click the button 
-            // once more to get the file via a direct user-initiated click.
-            setTimeout(() => setDlState("idle"), 8000);
+            // Auto-trigger download immediately when ready
+            const link = document.createElement("a");
+            link.href = downloadUrl;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => setDlState("idle"), 5000);
           } else if (statusData.status === "failed") {
             stopPolling();
             setDlState("failed");

@@ -45,7 +45,13 @@ const VideoItem = ({ video }: VideoItemProps) => {
           if (sd.status === "ready") {
             stopPolling();
             setDlState("ready");
-            setTimeout(() => setDlState("idle"), 8000);
+            // Auto-trigger download
+            const link = document.createElement("a");
+            link.href = downloadUrl;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => setDlState("idle"), 5000);
           } else if (sd.status === "failed") {
             stopPolling(); setDlState("failed");
             setTimeout(() => setDlState("idle"), 4000);
