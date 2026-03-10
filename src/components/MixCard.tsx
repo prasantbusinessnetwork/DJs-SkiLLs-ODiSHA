@@ -28,13 +28,43 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     }
   };
 
+  const sanitize = (name: string) => {
+    return (name || "download").replace(/[^\w\s-]/gi, '').trim() || "download";
+  };
+
+  const triggerBlobDownload = async () => {
+    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId || "")}&title=${encodeURIComponent(title)}`;
+    try {
+      // Do not set dlState to "preparing" here, as it should already be "ready" when this is called
+      // or we are initiating a direct download from "ready" state.
+      const resp = await fetch(downloadUrl);
+      if (!resp.ok) throw new Error("Download failed");
+
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${sanitize(title)}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      // The state will be set to "idle" by the calling function (polling or handleFinalDownload)
+      // after a timeout, or it remains "ready" until the timeout.
+    } catch (error) {
+      console.error("Blob download error:", error);
+      setDlState("failed");
+      setTimeout(() => setDlState("idle"), 4000);
+    }
+  };
+
   const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!videoId || dlState === "preparing") return;
 
     const prepareUrl = `${apiBase}/api/prepare?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title)}`;
     const statusUrl = `${apiBase}/api/status?videoId=${encodeURIComponent(videoId)}`;
-    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title)}`;
+    // const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title)}`; // No longer directly used here
 
     setDlState("preparing");
 
@@ -46,11 +76,7 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
       if (data.status === "ready") {
         // Already cached — download immediately
         setDlState("ready");
-        const link = document.createElement("a");
-        link.href = downloadUrl;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        await triggerBlobDownload(); // Use the new function
         setTimeout(() => setDlState("idle"), 5000);
         return;
       }
@@ -65,12 +91,8 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
           if (statusData.status === "ready") {
             stopPolling();
             setDlState("ready");
-            // Auto-trigger download immediately when ready
-            const link = document.createElement("a");
-            link.href = downloadUrl;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            // Auto-trigger blob download immediately when ready
+            await triggerBlobDownload();
             setTimeout(() => setDlState("idle"), 5000);
           } else if (statusData.status === "failed") {
             stopPolling();
@@ -90,16 +112,17 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     }
   };
 
-  const handleFinalDownload = (e: React.MouseEvent) => {
+  const handleFinalDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId || "")}&title=${encodeURIComponent(title)}`;
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    // Removing custom 'download' attr to let server headers handle the filename
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setDlState("idle");
+    // The dlState should already be "ready" when this is called.
+    // If triggerBlobDownload fails, it will set dlState to "failed".
+    await triggerBlobDownload();
+    // If triggerBlobDownload succeeds, the state remains "ready" until the timeout from polling,
+    // or we can explicitly set it to idle here if it's a direct "Save MP3" click.
+    // For consistency with the polling path, let's let the user see "Done!" for a bit.
+    if (dlState === "ready") { // Only if it was successful and not changed to "failed" by triggerBlobDownload
+      setTimeout(() => setDlState("idle"), 5000);
+    }
   };
 
   const handlePlay = () => {

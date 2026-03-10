@@ -22,11 +22,35 @@ const VideoItem = ({ video }: VideoItemProps) => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   };
 
+  const sanitize = (name: string) => {
+    return (name || "download").replace(/[^\w\s-]/gi, '').trim() || "download";
+  };
+
+  const triggerBlobDownload = async () => {
+    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
+    try {
+      const resp = await fetch(downloadUrl);
+      if (!resp.ok) throw new Error("Download failed");
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${sanitize(video.title)}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Blob download error:", err);
+      setDlState("failed");
+      setTimeout(() => setDlState("idle"), 4000);
+    }
+  };
+
   const handleDownload = async () => {
     if (dlState === "preparing") return;
     const prepareUrl = `${apiBase}/api/prepare?videoId=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
     const statusUrl = `${apiBase}/api/status?videoId=${encodeURIComponent(video.videoId)}`;
-    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
     setDlState("preparing");
     try {
       const res = await fetch(prepareUrl);
@@ -34,11 +58,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
       const data = await res.json();
       if (data.status === "ready") {
         setDlState("ready");
-        const link = document.createElement("a");
-        link.href = downloadUrl;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        await triggerBlobDownload();
         setTimeout(() => setDlState("idle"), 5000);
         return;
       }
@@ -50,12 +70,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
           if (sd.status === "ready") {
             stopPolling();
             setDlState("ready");
-            // Auto-trigger download
-            const link = document.createElement("a");
-            link.href = downloadUrl;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            await triggerBlobDownload();
             setTimeout(() => setDlState("idle"), 5000);
           } else if (sd.status === "failed") {
             stopPolling(); setDlState("failed");
@@ -129,13 +144,8 @@ const VideoItem = ({ video }: VideoItemProps) => {
               Watch
             </button>
             <button
-              onClick={dlState === "ready" ? () => {
-                const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
-                const link = document.createElement("a");
-                link.href = downloadUrl;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+              onClick={dlState === "ready" ? async () => {
+                await triggerBlobDownload();
                 setDlState("idle");
               } : handleDownload}
               disabled={dlState === "preparing"}
