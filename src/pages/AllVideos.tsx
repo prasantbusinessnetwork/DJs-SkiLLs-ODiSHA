@@ -29,19 +29,13 @@ const VideoItem = ({ video }: VideoItemProps) => {
   const triggerBlobDownload = async () => {
     const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
     try {
-      const resp = await fetch(downloadUrl);
-      if (!resp.ok) throw new Error("Download failed");
-      const blob = await resp.blob();
-      const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = `${sanitize(video.title)}.mp3`;
+      a.href = downloadUrl;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
     } catch (err) {
-      console.error("Blob download error:", err);
+      console.error("Native download error:", err);
       setDlState("failed");
       setTimeout(() => setDlState("idle"), 4000);
     }

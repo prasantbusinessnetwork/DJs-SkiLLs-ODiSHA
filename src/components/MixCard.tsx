@@ -35,24 +35,15 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
   const triggerBlobDownload = async () => {
     const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId || "")}&title=${encodeURIComponent(title)}`;
     try {
-      // Do not set dlState to "preparing" here, as it should already be "ready" when this is called
-      // or we are initiating a direct download from "ready" state.
-      const resp = await fetch(downloadUrl);
-      if (!resp.ok) throw new Error("Download failed");
-
-      const blob = await resp.blob();
-      const url = window.URL.createObjectURL(blob);
+      // By using native OS tools, Mobile browsers won't run empty or throw "Failed" notification from Blob memory clear
       const a = document.createElement("a");
-      a.href = url;
-      a.download = `${sanitize(title)}.mp3`;
+      a.href = downloadUrl;
+      // Triggers native download manager
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-      // The state will be set to "idle" by the calling function (polling or handleFinalDownload)
-      // after a timeout, or it remains "ready" until the timeout.
     } catch (error) {
-      console.error("Blob download error:", error);
+      console.error("Native download error:", error);
       setDlState("failed");
       setTimeout(() => setDlState("idle"), 4000);
     }
