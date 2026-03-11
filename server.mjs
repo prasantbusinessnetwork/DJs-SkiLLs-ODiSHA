@@ -86,110 +86,108 @@ function sanitize(name) {
   return (name || "download").replace(/[<>:"/\\|?*\x00-\x1F]/g, "").replace(/\s+/g, " ").trim().slice(0, 100) || "download";
 }
 
-app.get("/api/download", (req, res) => {
-  let { videoId } = req.query;
-  const { title } = req.query;
+app.get("/api/download", async (req, res) => {
+  const { videoId, title } = req.query;
 
-  // We allow frontend to still call /api/prepare, we will just pipe everything through /api/download
   if (!videoId) return res.status(400).json({ error: "Video ID missing" });
 
-  try {
-    const rawTitle = title || videoId || "download";
-    // Sanitize specifically to prevent HTTP Header splitting and invalid chars
-    const safeAscii = rawTitle.replace(/[^\w\s-]/g, "").replace(/\s+/g, " ").trim().slice(0, 50) || "download";
-    const encodedTitle = encodeURIComponent(rawTitle);
+  const startStream = (id, attempt = 1) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const rawTitle = title || id || "download";
+        const safeAscii = rawTitle.replace(/[^\w\s-]/g, "").replace(/\s+/g, " ").trim().slice(0, 50) || "download";
+        const encodedTitle = encodeURIComponent(rawTitle);
 
-    // Set headers to trigger file download dialog
-    // Use fallback ASCII filename + standard UTF-8 encoded filename
-    res.setHeader("Content-Disposition", `attachment; filename="${safeAscii}.mp3"; filename*=UTF-8''${encodedTitle}.mp3`);
-    res.setHeader("Content-Type", "audio/mpeg");
-
-    console.log(`[Stream] Starting download stream for: ${videoId}`);
-
-    const FFMPEG_CMD = isWin ? path.join(FFMPEG_BIN_ROOT, "ffmpeg.exe") : "ffmpeg";
-
-    const ytArgs = [
-      "-f", "bestaudio",
-      "--no-warnings", "-q",
-      "--no-check-certificate", "--no-cache-dir", "--no-part", "--no-playlist",
-      "--extractor-args", "youtube:player-client=android,web,mweb,ios",
-      "--force-ipv4",
-      "-o", "-", // Crucial: Streams binary directly to stdout
-      `https://www.youtube.com/watch?v=${videoId}`
-    ];
-
-    const ffArgs = [
-      "-i", "pipe:0",          // Input from yt-dlp
-      "-f", "mp3",             // Force format to MP3
-      "-b:a", "192k",          // Audio bitrate
-      "pipe:1"                 // Output MP3 to stdout
-    ];
-
-    const ytDlpProc = spawn(YTDLP_PATH, ytArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
-    const ffmpegProc = spawn(FFMPEG_CMD, ffArgs, { stdio: ['pipe', 'pipe', 'ignore'] });
-
-    // Ensure we don't crash Node process silently on spawn failures
-    const handleProcError = (procName) => (err) => {
-      console.error(`[${procName}] Spawn/Stream error:`, err.message);
-      if (!res.headersSent) {
-        res.status(500).json({ error: `Failed to start ${procName} stream` });
-      }
-    };
-
-    ytDlpProc.on("error", handleProcError("yt-dlp"));
-    ffmpegProc.on("error", handleProcError("ffmpeg"));
-    ytDlpProc.stdout.on("error", handleProcError("ytDlpProc.stdout"));
-    ffmpegProc.stdin.on("error", handleProcError("ffmpegProc.stdin"));
-    ffmpegProc.stdout.on("error", handleProcError("ffmpegProc.stdout"));
-    res.on("error", () => {
-      console.log(`[Stream] Response stream closed with error for ${videoId}`);
-      cleanup();
-    });
-
-    let stderr = "";
-    ytDlpProc.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
-
-    // Pipe audio natively to ffmpeg, then buffer MP3 out to network response
-    ytDlpProc.stdout.pipe(ffmpegProc.stdin);
-    ffmpegProc.stdout.pipe(res);
-
-    const cleanup = () => {
-      try { ytDlpProc.kill("SIGKILL"); } catch (e) { }
-      try { ffmpegProc.kill("SIGKILL"); } catch (e) { }
-    };
-
-    req.on("close", () => {
-      console.log(`[Stream] Client cancelled download for ${videoId}`);
-      cleanup();
-    });
-
-    ytDlpProc.on("close", (code) => {
-      if (code !== 0 && code !== null) {
-        console.error(`[yt-dlp Failed] ${videoId} (Exit Code: ${code})\n${stderr}`);
-        try { fs.appendFileSync(path.join(__dirname, "last_error.log"), `[${new Date().toISOString()}] Stream Failed: ${videoId} (Code: ${code})\n${stderr}\n`); } catch (e) { }
-
-        if (!res.headersSent) {
-          res.status(500).json({ error: "Temporary YouTube block or processing error. Please retry." });
-        } else {
-          try { ffmpegProc.kill("SIGKILL"); } catch (e) { }
-          res.end();
+        if (attempt === 1) {
+          res.setHeader("Content-Disposition", `attachment; filename="${safeAscii}.mp3"; filename*=UTF-8''${encodedTitle}.mp3`);
+          res.setHeader("Content-Type", "audio/mpeg");
         }
+
+        console.log(`[Stream] Attempt ${attempt} for: ${id}`);
+
+        const FFMPEG_CMD = isWin ? path.join(FFMPEG_BIN_ROOT, "ffmpeg.exe") : "ffmpeg";
+        const ytArgs = [
+          "-f", "bestaudio",
+          "--no-warnings", "-q",
+          "--no-check-certificate", "--no-cache-dir", "--no-part", "--no-playlist",
+          "--extractor-args", "youtube:player-client=android,web,mweb,ios",
+          "--force-ipv4",
+          "-o", "-",
+          `https://www.youtube.com/watch?v=${id}`
+        ];
+
+        const ffArgs = [
+          "-i", "pipe:0",
+          "-f", "mp3",
+          "-b:a", "192k",
+          "pipe:1"
+        ];
+
+        const ytDlpProc = spawn(YTDLP_PATH, ytArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+        const ffmpegProc = spawn(FFMPEG_CMD, ffArgs, { stdio: ['pipe', 'pipe', 'ignore'] });
+
+        let stderr = "";
+        ytDlpProc.stderr.on("data", (data) => { stderr += data.toString(); });
+
+        ytDlpProc.stdout.pipe(ffmpegProc.stdin);
+
+        // If it's a retry, we need to be careful with the pipe to 'res'
+        ffmpegProc.stdout.pipe(res, { end: false });
+
+        const cleanup = () => {
+          try { ytDlpProc.kill("SIGKILL"); } catch (e) { }
+          try { ffmpegProc.kill("SIGKILL"); } catch (e) { }
+        };
+
+        ytDlpProc.on("error", (err) => { cleanup(); reject(err); });
+        ffmpegProc.on("error", (err) => { cleanup(); reject(err); });
+
+        ytDlpProc.on("close", (code) => {
+          if (code !== 0 && code !== null) {
+            cleanup();
+            reject(new Error(`yt-dlp failed with code ${code}: ${stderr}`));
+          }
+        });
+
+        ffmpegProc.on("close", (code) => {
+          if (code === 0) {
+            console.log(`[Stream] Success: ${id} on attempt ${attempt}`);
+            res.end();
+            resolve();
+          } else {
+            cleanup();
+            reject(new Error(`FFmpeg failed with code ${code}`));
+          }
+        });
+
+        req.on("close", () => {
+          cleanup();
+          resolve();
+        });
+
+      } catch (err) {
+        reject(err);
       }
     });
+  };
 
-    ffmpegProc.on("close", (code) => {
-      if (code === 0) {
-        console.log(`[Stream] Success: ${videoId} converted to MP3`);
-      } else {
-        console.error(`[Stream] FFmpeg closed with Code ${code} for ${videoId}`);
-      }
-    });
-
+  try {
+    await startStream(videoId, 1);
   } catch (err) {
-    console.error("Backend Error:", err);
-    if (!res.headersSent) res.status(500).json({ error: "Failed to initialize stream." });
+    console.error(`[Stream Error] Attempt 1 failed for ${videoId}:`, err.message);
+
+    // Automatic Retry
+    try {
+      console.log(`[Stream] Retrying ${videoId} (Attempt 2)...`);
+      await startStream(videoId, 2);
+    } catch (retryErr) {
+      console.error(`[Stream Error] Attempt 2 failed for ${videoId}:`, retryErr.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to download audio after multiple attempts." });
+      } else {
+        res.end();
+      }
+    }
   }
 });
 
