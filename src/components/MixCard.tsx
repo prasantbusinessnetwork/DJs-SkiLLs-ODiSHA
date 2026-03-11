@@ -29,7 +29,8 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     setDlState("downloading");
 
     // Explicit API endpoint from utils.ts (Works across Vercel/Railway)
-    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title || "audio")}`;
+    // Standardized 'url' parameter as requested
+    const downloadUrl = `${apiBase}/api/download?url=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title || "audio")}`;
 
     try {
       console.log(`[Frontend] Fetching audio from: ${downloadUrl}`);

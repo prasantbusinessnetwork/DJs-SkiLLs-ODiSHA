@@ -27,7 +27,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
   };
 
   const triggerBlobDownload = async () => {
-    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
+    const downloadUrl = `${apiBase}/api/download?url=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
 
     setDlState("preparing");
     try {

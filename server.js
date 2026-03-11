@@ -76,11 +76,24 @@ app.get("/api/health", (req, res) => {
 
 // MAIN RELIABLE STREAMING DOWNLOAD ENDPOINT
 app.get("/api/download", limiter, async (req, res) => {
-  const { videoId, url, id, title } = req.query;
-  const vId = extractVideoId(videoId || url || id);
+  let { url, videoId, id, title } = req.query;
 
+  // Normalize: prioritize 'url' parameter as requested by user
+  let input = url || videoId || id;
+
+  if (!input) {
+    return res.status(400).json({ error: "YouTube URL or Video ID required (parameter 'url')." });
+  }
+
+  // If it's just an ID, normalize to a full URL for the extractor
+  let targetUrl = input;
+  if (!targetUrl.startsWith("http")) {
+    targetUrl = `https://www.youtube.com/watch?v=${targetUrl}`;
+  }
+
+  const vId = extractVideoId(targetUrl);
   if (!vId) {
-    return res.status(400).json({ error: "Invalid YouTube Video ID or URL. Use 'videoId' parameter." });
+    return res.status(400).json({ error: "Invalid YouTube Video ID or URL." });
   }
 
   const displayTitle = title || vId || "audio";
