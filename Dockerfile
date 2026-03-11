@@ -21,8 +21,10 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Latest Linux yt-dlp binary (Railway uses Linux)
+# We force a fresh download to ensure we have the latest bypasses
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
-    chmod a+rx /usr/local/bin/yt-dlp
+    chmod a+rx /usr/local/bin/yt-dlp && \
+    /usr/local/bin/yt-dlp --version
 
 WORKDIR /app
 

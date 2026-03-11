@@ -74,7 +74,7 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// ROBUST YT-DLP STREAMING DOWNLOAD ENDPOINT
+// ROBUST YT-DLP STREAMING DOWNLOAD ENDPOINT WITH MULTI-STAGE RETRY
 app.get("/api/download", limiter, async (req, res) => {
   let { url, videoId, id, title } = req.query;
 
@@ -102,110 +102,112 @@ app.get("/api/download", limiter, async (req, res) => {
 
   console.log(`[Job] Request: ID=${vId} | URL=${targetUrl}`);
 
-  // yt-dlp arguments optimized for stability and bypassing blocks
-  const ytArgs = [
-    "-f", "bestaudio/best",
-    "--no-check-certificate",
-    "--no-cache-dir",
-    "--no-playlist",
-    "--force-ipv4",
-    "-o", "-",
-    targetUrl
-  ];
+  // STAGE 1: Attempt 'bestaudio'
+  async function startStage(formatSpec) {
+    return new Promise((resolve) => {
+      const ytArgs = [
+        "-f", formatSpec,
+        "--no-check-certificate",
+        "--no-cache-dir",
+        "--no-playlist",
+        "--force-ipv4",
+        "-o", "-",
+        targetUrl
+      ];
 
-  // ffmpeg arguments for transcoding to 192k mp3
-  const ffArgs = [
-    "-i", "pipe:0",
-    "-f", "mp3",
-    "-b:a", "192k",
-    "-ar", "44100",
-    "-ac", "2",
-    "pipe:1"
-  ];
+      const ffArgs = [
+        "-i", "pipe:0",
+        "-f", "mp3",
+        "-b:a", "192k",
+        "-ar", "44100",
+        "-ac", "2",
+        "pipe:1"
+      ];
 
-  let ytProcess;
-  let ffProcess;
-  let headersSent = false;
-  let ytError = "";
+      let ytProcess = spawn(YTDLP_PATH, ytArgs);
+      let ffProcess = spawn(FFMPEG_PATH, ffArgs);
+      let headersSent = false;
+      let ytError = "";
 
-  const killProcesses = () => {
-    if (ytProcess) { try { ytProcess.kill("SIGKILL"); } catch (e) { } }
-    if (ffProcess) { try { ffProcess.kill("SIGKILL"); } catch (e) { } }
-  };
+      const killProcesses = () => {
+        if (ytProcess) { try { ytProcess.kill("SIGKILL"); } catch (e) { } }
+        if (ffProcess) { try { ffProcess.kill("SIGKILL"); } catch (e) { } }
+      };
+
+      ytProcess.stdout.pipe(ffProcess.stdin);
+
+      ffProcess.stdout.once("data", (chunk) => {
+        headersSent = true;
+        console.log(`[Job] Data detected (${formatSpec}) for ${vId}. Streaming...`);
+        res.writeHead(200, {
+          "Content-Disposition": `attachment; filename="${safeFilename}.mp3"; filename*=UTF-8''${encodedFilename}.mp3`,
+          "Content-Type": "audio/mpeg",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive"
+        });
+        res.write(chunk);
+      });
+
+      ffProcess.stdout.on("data", (chunk) => {
+        if (headersSent) res.write(chunk);
+      });
+
+      ytProcess.stderr.on("data", (data) => { ytError += data.toString(); });
+
+      ytProcess.on("close", (code) => {
+        if (code !== 0 && code !== null && !headersSent) {
+          console.error(`[yt-dlp] Stage (${formatSpec}) failed. Code ${code}`);
+          killProcesses();
+          resolve({ success: false, error: ytError });
+        }
+      });
+
+      ffProcess.on("close", (code) => {
+        killProcesses();
+        if (headersSent) {
+          if (!res.writableEnded) res.end();
+          resolve({ success: true });
+        } else {
+          resolve({ success: false, error: "FFmpeg ended prematurely" });
+        }
+      });
+
+      // Handle client disconnect
+      req.on("close", () => {
+        killProcesses();
+        resolve({ success: true, message: "Client disconnected" });
+      });
+
+      // Local timeout for this stage
+      setTimeout(() => {
+        if (!headersSent) {
+          killProcesses();
+          resolve({ success: false, error: "Timeout during format extraction" });
+        }
+      }, 30000);
+    });
+  }
 
   try {
-    ytProcess = spawn(YTDLP_PATH, ytArgs);
-    ffProcess = spawn(FFMPEG_PATH, ffArgs);
+    // Attempt 1: bestaudio (Preferred)
+    let result = await startStage("bestaudio/best");
 
-    // Stream yt-dlp stdout directly into ffmpeg stdin
-    ytProcess.stdout.pipe(ffProcess.stdin);
+    // Attempt 2: fallback to 'best' (video+audio mixed) if Stage 1 failed
+    if (!result.success) {
+      console.warn(`[Job] Stage 1 (bestaudio) failed, retrying with Stage 2 (best)...`);
+      result = await startStage("best");
+    }
 
-    // **DATA GATING:** Buffer first chunk to ensure we actually have data before sending 200 OK.
-    ffProcess.stdout.once("data", (chunk) => {
-      headersSent = true;
-      console.log(`[Job] Data detected for ${vId}, sending headers.`);
-      res.writeHead(200, {
-        "Content-Disposition": `attachment; filename="${safeFilename}.mp3"; filename*=UTF-8''${encodedFilename}.mp3`,
-        "Content-Type": "audio/mpeg",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive"
+    if (!result.success && !res.headersSent) {
+      console.error(`[Job Final] Both format stages failed for ${vId}.`);
+      res.status(500).json({
+        error: "Could not retrieve audio format. YouTube might be blocking the request or the video has restrictions."
       });
-      res.write(chunk);
-    });
-
-    // Send remaining chunks
-    ffProcess.stdout.on("data", (chunk) => {
-      if (headersSent) res.write(chunk);
-    });
-
-    ytProcess.stderr.on("data", (data) => {
-      const msg = data.toString();
-      ytError += msg;
-      if (msg.toLowerCase().includes("error")) {
-        console.error(`[yt-dlp stderr]: ${msg.trim()}`);
-      }
-    });
-
-    ytProcess.on("close", (code) => {
-      if (code !== 0 && code !== null && !headersSent) {
-        console.error(`[yt-dlp error] Code ${code}: ${ytError.slice(-200)}`);
-        if (!res.headersSent) {
-          const isBot = ytError.includes("confirm you are a human") || ytError.includes("403");
-          res.status(500).json({
-            error: isBot ? "YouTube is currently rate-limiting this server. Please try again later." : "Could not retrieve audio format. Please try another video."
-          });
-        }
-        killProcesses();
-      }
-    });
-
-    ffProcess.on("close", (code) => {
-      if (code !== 0 && code !== null && code !== 255) {
-        console.error(`[ffmpeg] Exit code: ${code}`);
-      }
-      killProcesses();
-      if (!res.writableEnded) res.end();
-    });
-
-    // Handle client disconnect gracefully without crashing server
-    req.on("close", () => {
-      console.log(`[Job] Client disconnected: ${vId}`);
-      killProcesses();
-    });
-
-    // Timeout if no data starts flowing within 30 seconds
-    setTimeout(() => {
-      if (!headersSent && !res.writableEnded) {
-        console.warn(`[Job] Timeout: No audio data for ${vId}`);
-        killProcesses();
-        if (!res.headersSent) res.status(504).json({ error: "Download took too long to start. Please retry." });
-      }
-    }, 30000);
+    }
 
   } catch (err) {
-    console.error("[Fatal] Stream Error:", err.message);
-    killProcesses();
-    if (!res.headersSent) res.status(500).json({ error: "Internal Streaming Error" });
+    console.error("[Fatal] Download Error:", err.message);
+    if (!res.headersSent) res.status(500).json({ error: "Internal Server Error during download." });
   }
 });
 
