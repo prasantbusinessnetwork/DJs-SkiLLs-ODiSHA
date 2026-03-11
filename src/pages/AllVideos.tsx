@@ -26,57 +26,17 @@ const VideoItem = ({ video }: VideoItemProps) => {
     return (name || "download").replace(/[^\w\s-]/gi, '').trim() || "download";
   };
 
-  const triggerBlobDownload = async () => {
-    const downloadUrl = `${apiBase}/api/download?url=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
-
-    setDlState("preparing");
-    try {
-      console.log(`[Frontend] Fetching audio from: ${downloadUrl}`);
-      const response = await fetch(downloadUrl, {
-        method: "GET",
-        mode: "cors",
-        credentials: "omit"
-      });
-
-      if (!response.ok) {
-        const errJson = await response.json().catch(() => ({ error: "Server could not process your download." }));
-        throw new Error(errJson.error || "Download fail (HTTP " + response.status + ")");
-      }
-
-      const blob = await response.blob();
-
-      if (blob.size < 1000) {
-        throw new Error("Downloaded file is too small.");
-      }
-
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.style.display = "none";
-      a.href = url;
-
-      const safeTitle = (video.title || "audio").replace(/[^\w\s-]/g, "").trim() || "download";
-      a.download = `${safeTitle}.mp3`;
-
-      document.body.appendChild(a);
-      a.click();
-
-      setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }, 1000);
-
-      setDlState("ready");
-      setTimeout(() => setDlState("idle"), 5000);
-    } catch (err) {
-      console.error("Download error:", err);
-      setDlState("failed");
-      setTimeout(() => setDlState("idle"), 4000);
-    }
-  };
-
   const handleDownload = async () => {
     if (dlState === "preparing") return;
-    await triggerBlobDownload();
+
+    setDlState("preparing");
+
+    const downloadUrl = `${apiBase}/api/download?url=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
+
+    console.log(`[Frontend] Opening download in new tab: ${downloadUrl}`);
+    window.open(downloadUrl, "_blank");
+
+    setTimeout(() => setDlState("idle"), 2000);
   };
 
   return (
@@ -142,10 +102,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
               Watch
             </button>
             <button
-              onClick={dlState === "ready" ? async () => {
-                await triggerBlobDownload();
-                setDlState("idle");
-              } : handleDownload}
+              onClick={handleDownload}
               disabled={dlState === "preparing"}
               className={`flex items-center gap-1 rounded-full px-3 py-1 text-[0.7rem] font-bold transition-all hover:opacity-80
                 ${dlState === "ready" ? "bg-green-600 text-white animate-pulse" :

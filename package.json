@@ -16,7 +16,6 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "@distube/ytdl-core": "^4.16.12",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -74,7 +73,7 @@
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.160.1",
     "vaul": "^0.9.9",
-    "ytdl-core": "^4.11.5",
+    "@distube/ytdl-core": "^4.16.12",
     "zod": "^3.25.76"
   },
   "devDependencies": {
