@@ -21,6 +21,7 @@ const YT_API_KEY = process.env.YT_API_KEY;
 const CHANNEL_ID = process.env.CHANNEL_ID || "UC8FEwv0WXF5db-pIs8uJkag";
 
 app.use(cors({ exposedHeaders: ["Content-Disposition"] }));
+app.use(express.static(path.join(__dirname, "dist")));
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 
@@ -207,10 +208,14 @@ app.get("/api/status", (req, res) => {
   return res.json({ status: "ready", videoId });
 });
 
-// ----------------------------------------------------
 // 3. Health & Utility
 // ----------------------------------------------------
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+
+// Fallback for SPA
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "dist", "index.html"));
+});
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend live on port ${PORT}`);
