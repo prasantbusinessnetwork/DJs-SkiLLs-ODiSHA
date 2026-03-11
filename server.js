@@ -10,34 +10,41 @@ import rateLimit from "express-rate-limit";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Resolve __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// --- 1. MIDDLEWARE & SECURITY ---
+// --- 1. CRASH PROTECTION ---
+// Prevent the process from exiting on unhandled errors (CRITICAL for production stability)
+process.on("uncaughtException", (err) => {
+  console.error("🔥 UNCAUGHT EXCEPTION:", err);
+});
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("🔥 UNHANDLED REJECTION at:", promise, "reason:", reason);
+});
+
+// --- 2. MIDDLEWARE ---
 app.use(cors({ exposedHeaders: ["Content-Disposition"] }));
+
+// Serve static files from 'dist' (Vite build) and 'public'
 app.use(express.static(path.join(__dirname, "dist")));
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 
-// Rate limiting to prevent YouTube blocks (10 downloads per 5 mins per IP)
+// Rate limiting: 20 requests per 5 minutes per IP
 const downloadLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: 10,
-  message: { error: "Too many downloads from this IP, please try again in 5 minutes." },
+  max: 20,
+  message: { error: "Too many requests. Please try again in 5 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// --- 2. ENVIRONMENT CHECK ---
-const YT_API_KEY = process.env.YT_API_KEY;
-if (!YT_API_KEY) {
-  console.warn("⚠️ Warning: YT_API_KEY is missing. Channel fetch endpoints will fail.");
-}
-
-// --- 3. UTILITIES ---
+// --- 3. CONFIGURATION & UTILS ---
 const isWin = process.platform === "win32";
+// yt-dlp is installed to /usr/local/bin/yt-dlp in Docker, which is in PATH
 const YTDLP_PATH = isWin ? path.join(__dirname, "yt-dlp.exe") : "yt-dlp";
-const FFMPEG_CMD = isWin ? path.join(__dirname, "bin", "ffmpeg.exe") : "ffmpeg";
+const FFMPEG_PATH = isWin ? path.join(__dirname, "bin", "ffmpeg.exe") : "ffmpeg";
 
 function extractVideoId(input) {
   if (!input) return null;
@@ -54,23 +61,35 @@ function sanitizeFilename(name) {
     .slice(0, 50) || "download";
 }
 
-// --- 4. ENDPOINTS ---
+// --- 4. API ROUTES ---
 
-// Fetch latest videos from channel
+// Health Check
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Latest Videos (Proxy to YouTube API)
 app.get("/api/latest-videos", async (req, res) => {
+  const API_KEY = process.env.YT_API_KEY;
   const CHANNEL_ID = process.env.CHANNEL_ID || "UC8FEwv0WXF5db-pIs8uJkag";
-  const maxResults = parseInt(req.query.maxResults) || 15;
 
-  if (!YT_API_KEY) return res.status(500).json({ error: "YT_API_KEY not configured" });
+  if (!API_KEY) {
+    console.error("❌ YT_API_KEY is missing from environment variables!");
+    return res.status(500).json({ error: "Server configuration error" });
+  }
 
   try {
-    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&maxResults=50&order=date&type=video&key=${YT_API_KEY}`;
-    const response = await fetch(searchUrl);
-    const json = await response.json();
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&maxResults=20&order=date&type=video&key=${API_KEY}`;
+    const response = await fetch(url);
+    const data = await response.json();
 
-    if (json.error) throw new Error(json.error.message);
+    if (data.error) throw new Error(data.error.message);
 
-    const videos = (json.items || []).map(item => ({
+    const videos = (data.items || []).map(item => ({
       videoId: item.id.videoId,
       title: item.snippet.title,
       artist: item.snippet.channelTitle,
@@ -79,47 +98,40 @@ app.get("/api/latest-videos", async (req, res) => {
       thumbnail: item.snippet.thumbnails?.medium?.url || "",
     })).filter(v => v.videoId);
 
-    res.json({ videos: videos.slice(0, maxResults) });
+    res.json({ videos });
   } catch (err) {
-    console.error("[Backend] Latest videos error:", err.message);
-    res.status(500).json({ error: "Failed to fetch channel videos" });
+    console.error("❌ Latest videos fetch failed:", err.message);
+    res.status(500).json({ error: "Failed to load videos" });
   }
 });
 
-// MAIN RELIABLE DOWNLOAD ENDPOINT
+// Download Route (Robust Streaming)
 app.get("/api/download", downloadLimiter, async (req, res) => {
   const { videoId, url, title } = req.query;
-  const targetId = extractVideoId(videoId || url);
+  const id = extractVideoId(videoId || url);
 
-  if (!targetId) {
-    return res.status(400).json({ error: "Invalid YouTube Video ID or URL" });
-  }
+  if (!id) return res.status(400).json({ error: "Invalid Video ID or URL" });
 
-  console.log(`[Download] Incoming request for ID: ${targetId} (Title: ${title || "Unknown"})`);
-
-  const downloadStream = (id, attempt = 1) => {
+  const streamAudio = (vidId, attempt = 1) => {
     return new Promise((resolve, reject) => {
-      const displayTitle = title || id || "download";
-      const safeFilename = sanitizeFilename(displayTitle);
-      const encodedTitle = encodeURIComponent(displayTitle);
+      const fileName = sanitizeFilename(title || vidId);
+      const encodedTitle = encodeURIComponent(title || vidId);
 
-      // Only set headers on first attempt to avoid protocol errors on retry
-      if (attempt === 1) {
-        res.setHeader("Content-Disposition", `attachment; filename="${safeFilename}.mp3"; filename*=UTF-8''${encodedTitle}.mp3`);
+      // Set headers for download
+      if (!res.headersSent) {
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}.mp3"; filename*=UTF-8''${encodedTitle}.mp3`);
         res.setHeader("Content-Type", "audio/mpeg");
       }
 
-      console.log(`[Stream] Attempt ${attempt} started for ${id}...`);
+      console.log(`[Stream] Starting download for ${vidId} (Attempt ${attempt})`);
 
       const ytArgs = [
         "-f", "bestaudio",
-        "--no-warnings",
         "--no-check-certificate",
         "--no-cache-dir",
         "--extractor-args", "youtube:player-client=android,web",
-        "--force-ipv4",
         "-o", "-",
-        `https://www.youtube.com/watch?v=${id}`
+        `https://www.youtube.com/watch?v=${vidId}`
       ];
 
       const ffArgs = [
@@ -129,71 +141,57 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
         "pipe:1"
       ];
 
-      const ytDlpProc = spawn(YTDLP_PATH, ytArgs);
-      const ffmpegProc = spawn(FFMPEG_CMD, ffArgs);
+      const ytProc = spawn(YTDLP_PATH, ytArgs);
+      const ffProc = spawn(FFMPEG_PATH, ffArgs);
 
-      ytDlpProc.stdout.pipe(ffmpegProc.stdin);
-      // pipe with { end: false } so we can retry on the same 'res' if needed
-      ffmpegProc.stdout.pipe(res, { end: false });
+      ytProc.stdout.pipe(ffProc.stdin);
+      ffProc.stdout.pipe(res, { end: false });
 
-      let ytStderr = "";
-      ytDlpProc.stderr.on("data", (data) => { ytStderr += data.toString(); });
+      let stderr = "";
+      ytProc.stderr.on("data", (d) => { stderr += d.toString(); });
 
-      const killProcs = () => {
-        try { ytDlpProc.kill("SIGKILL"); } catch (e) { }
-        try { ffmpegProc.kill("SIGKILL"); } catch (e) { }
+      const cleanup = () => {
+        try { ytProc.kill("SIGKILL"); } catch (e) { }
+        try { ffProc.kill("SIGKILL"); } catch (e) { }
       };
 
-      ytDlpProc.on("error", (err) => {
-        killProcs();
-        reject(new Error(`yt-dlp Startup Error: ${err.message}`));
-      });
-
-      ffmpegProc.on("error", (err) => {
-        killProcs();
-        reject(new Error(`FFmpeg Startup Error: ${err.message}`));
-      });
-
-      ytDlpProc.on("close", (code) => {
+      ytProc.on("close", (code) => {
         if (code !== 0 && code !== null) {
-          killProcs();
-          reject(new Error(`yt-dlp exited with code ${code}: ${ytStderr.slice(-200)}`));
+          cleanup();
+          reject(new Error(`yt-dlp failed: ${stderr.slice(-100)}`));
         }
       });
 
-      ffmpegProc.on("close", (code) => {
+      ffProc.on("close", (code) => {
         if (code === 0) {
-          console.log(`[Stream] Success: Finished streaming ${id}`);
-          res.end(); // Manually end because of { end: false }
+          console.log(`[Stream] Successfully finished ${vidId}`);
+          res.end();
           resolve();
         } else {
-          killProcs();
-          reject(new Error(`FFmpeg exited with code ${code}`));
+          cleanup();
+          reject(new Error(`FFmpeg failed with code ${code}`));
         }
       });
 
-      // Cleanup if user cancels download
       req.on("close", () => {
-        console.log(`[Stream] Connection closed by client for ${id}`);
-        killProcs();
+        console.log(`[Stream] Client disconnected for ${vidId}`);
+        cleanup();
         resolve();
       });
     });
   };
 
   try {
-    await downloadStream(targetId, 1);
+    await streamAudio(id, 1);
   } catch (err) {
-    console.warn(`[Stream Error] Attempt 1 failed for ${targetId}:`, err.message);
-
-    // Auto-retry once
+    console.warn(`[Stream] Attempt 1 failed for ${id}:`, err.message);
     try {
-      console.log(`[Stream] Retrying ${targetId} (Attempt 2)...`);
-      await downloadStream(targetId, 2);
+      console.log(`[Stream] Retrying ${id} (Attempt 2)...`);
+      await streamAudio(id, 2);
     } catch (retryErr) {
-      console.error(`[Stream Error] Final failure for ${targetId}:`, retryErr.message);
+      console.error(`[Stream] Critical error for ${id}:`, retryErr.message);
       if (!res.headersSent) {
-        res.status(500).json({ error: "Download failed after retry. YouTube might be temporarily blocking requests." });
+        res.status(500).json({ error: "Download failed. Please try again later." });
       } else {
         res.end();
       }
@@ -201,30 +199,30 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
   }
 });
 
-// Mock Status endpoints for frontend compatibility
+// Compatibility endpoints
 app.get("/api/prepare", (req, res) => res.json({ status: "ready" }));
 app.get("/api/status", (req, res) => res.json({ status: "ready" }));
-app.get("/api/health", (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
 
-// --- 5. FRONTEND ROUTING ---
+// --- 5. FALLBACK SPA ROUTING ---
 app.get("*", (req, res) => {
   const distPath = path.join(__dirname, "dist", "index.html");
   if (fs.existsSync(distPath)) {
     res.sendFile(distPath);
   } else {
-    res.status(404).send("Frontend build not found. Run 'npm run build' first.");
+    console.error("❌ ERROR: 'dist/index.html' not found! Make sure to run 'npm run build'.");
+    res.status(404).send("Frontend assets missing. Deployment might be incomplete.");
   }
 });
 
+// --- 6. START SERVER ---
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`
-  ==================================================
-  🚀 PRODUCTION DOWNLOADER READY
-  ==================================================
+  🚀 SERVER IS LIVE AND CRASH-PROOFED
+  ====================================
   Port:    ${PORT}
-  OS:      ${process.platform}
-  YTDLP:   ${YTDLP_PATH}
-  FFMPEG:  ${FFMPEG_CMD}
-  ==================================================
+  Mode:    ${process.env.NODE_ENV || 'production'}
+  Dist:    ${path.join(__dirname, "dist")}
+  Time:    ${new Date().toLocaleString()}
+  ====================================
   `);
 });
