@@ -19,4 +19,4 @@ RUN mkdir -p downloads
 
 EXPOSE 3000
 
-CMD ["node", "server.mjs"]
+CMD ["node", "server.js"]
