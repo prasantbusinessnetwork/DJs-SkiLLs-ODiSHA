@@ -33,10 +33,52 @@ const VideoItem = ({ video }: VideoItemProps) => {
 
     const downloadUrl = `${apiBase}/api/download?url=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
 
-    console.log(`[Frontend] Opening download in new tab: ${downloadUrl}`);
-    window.open(downloadUrl, "_blank");
+    try {
+      console.log(`[Frontend] Fetching audio from: ${downloadUrl}`);
+      const response = await fetch(downloadUrl, {
+        method: "GET",
+        mode: "cors",
+        credentials: "omit"
+      });
 
-    setTimeout(() => setDlState("idle"), 2000);
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({ error: "Server could not process your download." }));
+        throw new Error(errJson.error || "Download fail (HTTP " + response.status + ")");
+      }
+
+      const blob = await response.blob();
+
+      if (blob.size < 50000) {
+        const text = await blob.text();
+        if (text.includes("error") || text.includes("blocked")) {
+          throw new Error("Download interrupted or blocked by YouTube. Please retry.");
+        }
+        throw new Error("Downloaded file is too small.");
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = url;
+
+      const safeTitle = (video.title || "audio").replace(/[^\w\s-]/g, "").trim() || "download";
+      a.download = `${safeTitle}.mp3`;
+
+      document.body.appendChild(a);
+      a.click();
+
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }, 1000);
+
+      setDlState("ready");
+      setTimeout(() => setDlState("idle"), 5000);
+    } catch (err) {
+      console.error("Download error:", err);
+      setDlState("failed");
+      setTimeout(() => setDlState("idle"), 4000);
+    }
   };
 
   return (
