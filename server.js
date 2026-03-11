@@ -203,17 +203,43 @@ app.get("/api/download", limiter, async (req, res) => {
   }
 });
 
-// Legacy video fetching API
+// --- 6. YOUTUBE API CACHING ---
+let cachedVideos = [];
+let cacheTimestamp = 0;
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes in milliseconds
+
+// Legacy video fetching API with Caching
 app.get("/api/latest-videos", async (req, res) => {
   const API_KEY = process.env.YT_API_KEY;
   const CHANNEL_ID = process.env.CHANNEL_ID || "UC8FEwv0WXF5db-pIs8uJkag";
-  if (!API_KEY) return res.status(500).json({ error: "API Key Missing" });
+
+  // 1. Check if we have a fresh cache 
+  const now = Date.now();
+  if (cachedVideos.length > 0 && (now - cacheTimestamp < CACHE_TTL)) {
+    console.log("[Cache] Serving /api/latest-videos from memory");
+    return res.json({ videos: cachedVideos });
+  }
+
+  if (!API_KEY) {
+    return res.status(500).json({ error: "API Key Missing", videos: cachedVideos });
+  }
 
   try {
+    console.log("[YouTube Quota] Fetching new data from YouTube Data API...");
     const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&maxResults=20&order=date&type=video&key=${API_KEY}`;
     const resp = await fetch(url);
     const data = await resp.json();
-    if (data.error) return res.status(500).json({ error: data.error.message });
+
+    // YouTube Data API error
+    if (data.error) {
+      console.error("[YouTube Quota Error]:", data.error.message);
+      // Graceful degradation: If YouTube throws an error (like quota exceeded), serve the stale cache if we have one, otherwise throw.
+      if (cachedVideos.length > 0) {
+        console.log("[Cache] Serving stale cache due to YouTube API Error.");
+        return res.json({ videos: cachedVideos, warning: "Quota exceeded, showing cached data." });
+      }
+      return res.status(500).json({ error: data.error.message, videos: [] });
+    }
 
     const videos = (data.items || []).map(v => ({
       videoId: v.id.videoId,
@@ -224,9 +250,20 @@ app.get("/api/latest-videos", async (req, res) => {
       publishedAt: v.snippet.publishedAt,
     })).filter(v => v.videoId);
 
+    // Update Cache
+    if (videos.length > 0) {
+      cachedVideos = videos;
+      cacheTimestamp = Date.now();
+      console.log("[Cache] Memory updated with fresh YouTube data.");
+    }
+
     res.json({ videos });
   } catch (err) {
-    res.status(500).json({ error: "Fetch failed" });
+    console.error("[Fetch Error]:", err.message);
+    if (cachedVideos.length > 0) {
+      return res.json({ videos: cachedVideos, warning: "Network error, showing cached data." });
+    }
+    res.status(500).json({ error: "Fetch failed", videos: [] });
   }
 });
 
