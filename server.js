@@ -79,7 +79,7 @@ app.get("/api/download", limiter, async (req, res) => {
   let { url, videoId, id, title } = req.query;
 
   // Normalize: prioritize 'url' parameter
-  let input = url || videoId || id;
+  let input = (url || videoId || id || "").toString().trim();
 
   if (!input) {
     return res.status(400).json({ error: "YouTube URL or Video ID required (parameter 'url')." });
@@ -96,7 +96,7 @@ app.get("/api/download", limiter, async (req, res) => {
     return res.status(400).json({ error: "Invalid YouTube Video ID or URL." });
   }
 
-  const displayTitle = title || vId || "audio";
+  const displayTitle = (title || vId || "audio").toString();
   const safeFilename = sanitizeFilename(displayTitle);
   const encodedFilename = encodeURIComponent(safeFilename);
 
@@ -104,11 +104,10 @@ app.get("/api/download", limiter, async (req, res) => {
 
   // yt-dlp arguments optimized for stability and bypassing blocks
   const ytArgs = [
-    "-f", "ba/best",
+    "-f", "bestaudio/best",
     "--no-check-certificate",
     "--no-cache-dir",
     "--no-playlist",
-    "--extractor-args", "youtube:player-client=android,ios,web",
     "--force-ipv4",
     "-o", "-",
     targetUrl
@@ -142,10 +141,9 @@ app.get("/api/download", limiter, async (req, res) => {
     ytProcess.stdout.pipe(ffProcess.stdin);
 
     // **DATA GATING:** Buffer first chunk to ensure we actually have data before sending 200 OK.
-    // This absolutely prevents "Downloaded file is too small" errors because if yt-dlp fails
-    // to get a stream (e.g. rate limit), this `data` event never fires.
     ffProcess.stdout.once("data", (chunk) => {
       headersSent = true;
+      console.log(`[Job] Data detected for ${vId}, sending headers.`);
       res.writeHead(200, {
         "Content-Disposition": `attachment; filename="${safeFilename}.mp3"; filename*=UTF-8''${encodedFilename}.mp3`,
         "Content-Type": "audio/mpeg",
@@ -160,13 +158,19 @@ app.get("/api/download", limiter, async (req, res) => {
       if (headersSent) res.write(chunk);
     });
 
-    ytProcess.stderr.on("data", (data) => { ytError += data.toString(); });
+    ytProcess.stderr.on("data", (data) => {
+      const msg = data.toString();
+      ytError += msg;
+      if (msg.toLowerCase().includes("error")) {
+        console.error(`[yt-dlp stderr]: ${msg.trim()}`);
+      }
+    });
 
     ytProcess.on("close", (code) => {
       if (code !== 0 && code !== null && !headersSent) {
         console.error(`[yt-dlp error] Code ${code}: ${ytError.slice(-200)}`);
         if (!res.headersSent) {
-          const isBot = ytError.includes("confirm you are a human") || ytError.includes("HTTP Error 403");
+          const isBot = ytError.includes("confirm you are a human") || ytError.includes("403");
           res.status(500).json({
             error: isBot ? "YouTube is currently rate-limiting this server. Please try again later." : "Could not retrieve audio format. Please try another video."
           });
@@ -176,7 +180,9 @@ app.get("/api/download", limiter, async (req, res) => {
     });
 
     ffProcess.on("close", (code) => {
-      console.log(`[ffmpeg] Finished with code ${code}`);
+      if (code !== 0 && code !== null && code !== 255) {
+        console.error(`[ffmpeg] Exit code: ${code}`);
+      }
       killProcesses();
       if (!res.writableEnded) res.end();
     });
@@ -187,14 +193,14 @@ app.get("/api/download", limiter, async (req, res) => {
       killProcesses();
     });
 
-    // Timeout if no data starts flowing within 25 seconds
+    // Timeout if no data starts flowing within 30 seconds
     setTimeout(() => {
       if (!headersSent && !res.writableEnded) {
         console.warn(`[Job] Timeout: No audio data for ${vId}`);
         killProcesses();
-        if (!res.headersSent) res.status(504).json({ error: "YouTube took too long to respond. Try again." });
+        if (!res.headersSent) res.status(504).json({ error: "Download took too long to start. Please retry." });
       }
-    }, 25000);
+    }, 30000);
 
   } catch (err) {
     console.error("[Fatal] Stream Error:", err.message);
