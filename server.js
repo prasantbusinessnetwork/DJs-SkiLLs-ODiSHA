@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import { spawn } from "child_process";
 import fs from "fs";
 import rateLimit from "express-rate-limit";
+import ytdl from "@distube/ytdl-core";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -44,7 +45,6 @@ const limiter = rateLimit({
 
 // --- 3. BINARY DETECTION ---
 const isWin = process.platform === "win32";
-const YTDLP_PATH = isWin ? path.join(__dirname, "yt-dlp.exe") : "yt-dlp";
 const FFMPEG_PATH = isWin ? path.join(__dirname, "bin", "ffmpeg.exe") : "ffmpeg";
 
 // --- 4. UTILS ---
@@ -74,18 +74,15 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// MAIN RELIABLE STREAMING DOWNLOAD ENDPOINT
+// MAIN RELIABLE STREAMING DOWNLOAD ENDPOINT (ytdl-core version)
 app.get("/api/download", limiter, async (req, res) => {
   let { url, videoId, id, title } = req.query;
-
-  // Normalize: prioritize 'url' parameter as requested by user
   let input = url || videoId || id;
 
   if (!input) {
     return res.status(400).json({ error: "YouTube URL or Video ID required (parameter 'url')." });
   }
 
-  // If it's just an ID, normalize to a full URL for the extractor
   let targetUrl = input;
   if (!targetUrl.startsWith("http")) {
     targetUrl = `https://www.youtube.com/watch?v=${targetUrl}`;
@@ -96,50 +93,53 @@ app.get("/api/download", limiter, async (req, res) => {
     return res.status(400).json({ error: "Invalid YouTube Video ID or URL." });
   }
 
-  const displayTitle = title || vId || "audio";
-  const safeFilename = sanitizeFilename(displayTitle);
-  const encodedFilename = encodeURIComponent(safeFilename);
-
-  console.log(`[Job] Request: ID=${vId} | Title=${displayTitle}`);
-
-  const ytArgs = [
-    "-f", "ba/best",
-    "--no-check-certificate",
-    "--no-cache-dir",
-    "--no-playlist",
-    "--extractor-args", "youtube:player-client=android,ios,web",
-    "--force-ipv4",
-    "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
-    "-o", "-",
-    `https://www.youtube.com/watch?v=${vId}`
-  ];
-
-  const ffArgs = [
-    "-i", "pipe:0",
-    "-f", "mp3",
-    "-b:a", "192k",
-    "-ar", "44100",
-    "-ac", "2",
-    "pipe:1"
-  ];
-
-  let ytProcess;
-  let ffProcess;
-  let headersSent = false;
-  let ytError = "";
-
-  const killProcesses = () => {
-    if (ytProcess) { try { ytProcess.kill("SIGKILL"); } catch (e) { } }
-    if (ffProcess) { try { ffProcess.kill("SIGKILL"); } catch (e) { } }
-  };
+  console.log(`[Job] Request: ID=${vId} | URL=${targetUrl}`);
 
   try {
-    ytProcess = spawn(YTDLP_PATH, ytArgs);
+    // 1. Get info as requested
+    console.log(`[ytdl] Fetching info for ${vId}...`);
+    const info = await ytdl.getInfo(targetUrl);
+
+    // 2. Filter formats as requested
+    const audioFormats = ytdl.filterFormats(info.formats, "audioonly");
+
+    // 3. Select first available audio format as requested
+    if (!audioFormats.length) {
+      return res.status(404).json({ error: "No audio formats found for this video." });
+    }
+
+    const selectedFormat = audioFormats[0];
+    console.log(`[ytdl] Selected format: ${selectedFormat.audioBitrate}kbps | ${selectedFormat.container}`);
+
+    const displayTitle = title || info.videoDetails.title || vId || "audio";
+    const safeFilename = sanitizeFilename(displayTitle);
+    const encodedFilename = encodeURIComponent(safeFilename);
+
+    // FFmpeg pipe for reliable MP3 conversion
+    const ffArgs = [
+      "-i", "pipe:0",
+      "-f", "mp3",
+      "-b:a", "192k",
+      "-ar", "44100",
+      "-ac", "2",
+      "pipe:1"
+    ];
+
+    let ffProcess;
+    let headersSent = false;
+
+    const killFFmpeg = () => {
+      if (ffProcess) { try { ffProcess.kill("SIGKILL"); } catch (e) { } }
+    };
+
     ffProcess = spawn(FFMPEG_PATH, ffArgs);
 
-    ytProcess.stdout.pipe(ffProcess.stdin);
+    // Pipe ytdl-core stream to FFmpeg
+    // downloadFromInfo() is more efficient than downloadFromUrl if we already have info
+    const audioStream = ytdl.downloadFromInfo(info, { format: selectedFormat });
+    audioStream.pipe(ffProcess.stdin);
 
-    // BUFFER first chunk to ensure we actually have data before sending 200 OK
+    // Buffer chunk gating (Ensures we don't send 200 OK for empty streams)
     ffProcess.stdout.once("data", (chunk) => {
       headersSent = true;
       res.writeHead(200, {
@@ -155,45 +155,42 @@ app.get("/api/download", limiter, async (req, res) => {
       if (headersSent) res.write(chunk);
     });
 
-    ytProcess.stderr.on("data", (data) => { ytError += data.toString(); });
-
-    ytProcess.on("close", (code) => {
-      if (code !== 0 && code !== null && !headersSent) {
-        console.error(`[yt-dlp] Error ${code}: ${ytError.slice(-200)}`);
-        if (!res.headersSent) {
-          const isBot = ytError.includes("confirm you are a human") || ytError.includes("PO-Token");
-          res.status(500).json({
-            error: isBot ? "YouTube is blocking the request. Please try again later." : "Could not retrieve audio format."
-          });
-        }
-        killProcesses();
-      }
-    });
-
     ffProcess.on("close", (code) => {
       console.log(`[ffmpeg] Finished with code ${code}`);
-      killProcesses();
       if (!res.writableEnded) res.end();
+    });
+
+    audioStream.on("error", (err) => {
+      console.error("[ytdl error]:", err.message);
+      if (!headersSent) res.status(500).json({ error: "YouTube stream interrupted." });
+      killFFmpeg();
     });
 
     req.on("close", () => {
       console.log(`[Job] Client disconnected: ${vId}`);
-      killProcesses();
+      audioStream.destroy();
+      killFFmpeg();
     });
 
-    // Timeout if no data after 20 seconds
+    // Timeout if no data
     setTimeout(() => {
       if (!headersSent && !res.writableEnded) {
         console.warn(`[Job] Timeout: No data for ${vId}`);
-        killProcesses();
-        if (!res.headersSent) res.status(504).json({ error: "YouTube took too long to respond. Try again." });
+        audioStream.destroy();
+        killFFmpeg();
+        if (!res.headersSent) res.status(504).json({ error: "Download timeout. Please try again." });
       }
-    }, 25000);
+    }, 30000);
 
   } catch (err) {
     console.error("[Fatal] Stream Error:", err.message);
-    killProcesses();
-    if (!res.headersSent) res.status(500).json({ error: "Internal Streaming Error" });
+    if (!res.headersSent) {
+      if (err.message.includes("confirm you are a human")) {
+        res.status(403).json({ error: "YouTube is blocking the request (Bot detection). Try another video or retry later." });
+      } else {
+        res.status(500).json({ error: "Could not retrieve audio format or info." });
+      }
+    }
   }
 });
 
@@ -233,5 +230,5 @@ app.use((req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 ENGINE READY | PORT ${PORT} | ${new Date().toLocaleTimeString()}`);
+  console.log(`🚀 ENGINE READY (ytdl-core) | PORT ${PORT} | ${new Date().toLocaleTimeString()}`);
 });
