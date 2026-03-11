@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+*.log
+yt-dlp.exe
+bin/
+output.txt
+.git
+.vscode
+.idea
+*.mp3
