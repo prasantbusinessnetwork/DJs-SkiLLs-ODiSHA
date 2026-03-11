@@ -94,10 +94,14 @@ app.get("/api/download", (req, res) => {
   if (!videoId) return res.status(400).json({ error: "Video ID missing" });
 
   try {
-    const safeTitle = sanitize(title || videoId);
+    const rawTitle = title || videoId || "download";
+    // Sanitize specifically to prevent HTTP Header splitting and invalid chars
+    const safeAscii = rawTitle.replace(/[^\w\s-]/g, "").replace(/\s+/g, " ").trim().slice(0, 50) || "download";
+    const encodedTitle = encodeURIComponent(rawTitle);
 
     // Set headers to trigger file download dialog
-    res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"`);
+    // Use fallback ASCII filename + standard UTF-8 encoded filename
+    res.setHeader("Content-Disposition", `attachment; filename="${safeAscii}.mp3"; filename*=UTF-8''${encodedTitle}.mp3`);
     res.setHeader("Content-Type", "audio/mpeg");
 
     console.log(`[Stream] Starting download stream for: ${videoId}`);
@@ -124,6 +128,24 @@ app.get("/api/download", (req, res) => {
     const ytDlpProc = spawn(YTDLP_PATH, ytArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
     const ffmpegProc = spawn(FFMPEG_CMD, ffArgs, { stdio: ['pipe', 'pipe', 'ignore'] });
 
+    // Ensure we don't crash Node process silently on spawn failures
+    const handleProcError = (procName) => (err) => {
+      console.error(`[${procName}] Spawn/Stream error:`, err.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: `Failed to start ${procName} stream` });
+      }
+    };
+
+    ytDlpProc.on("error", handleProcError("yt-dlp"));
+    ffmpegProc.on("error", handleProcError("ffmpeg"));
+    ytDlpProc.stdout.on("error", handleProcError("ytDlpProc.stdout"));
+    ffmpegProc.stdin.on("error", handleProcError("ffmpegProc.stdin"));
+    ffmpegProc.stdout.on("error", handleProcError("ffmpegProc.stdout"));
+    res.on("error", () => {
+      console.log(`[Stream] Response stream closed with error for ${videoId}`);
+      cleanup();
+    });
+
     let stderr = "";
     ytDlpProc.stderr.on("data", (data) => {
       stderr += data.toString();
@@ -133,8 +155,18 @@ app.get("/api/download", (req, res) => {
     ytDlpProc.stdout.pipe(ffmpegProc.stdin);
     ffmpegProc.stdout.pipe(res);
 
+    const cleanup = () => {
+      try { ytDlpProc.kill("SIGKILL"); } catch (e) { }
+      try { ffmpegProc.kill("SIGKILL"); } catch (e) { }
+    };
+
+    req.on("close", () => {
+      console.log(`[Stream] Client cancelled download for ${videoId}`);
+      cleanup();
+    });
+
     ytDlpProc.on("close", (code) => {
-      if (code !== 0) {
+      if (code !== 0 && code !== null) {
         console.error(`[yt-dlp Failed] ${videoId} (Exit Code: ${code})\n${stderr}`);
         try { fs.appendFileSync(path.join(__dirname, "last_error.log"), `[${new Date().toISOString()}] Stream Failed: ${videoId} (Code: ${code})\n${stderr}\n`); } catch (e) { }
 
