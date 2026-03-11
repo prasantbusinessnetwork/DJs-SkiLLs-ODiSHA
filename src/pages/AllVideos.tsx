@@ -28,14 +28,46 @@ const VideoItem = ({ video }: VideoItemProps) => {
 
   const triggerBlobDownload = async () => {
     const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
+
+    setDlState("preparing");
     try {
+      console.log(`[Frontend] Fetching audio from: ${downloadUrl}`);
+      const response = await fetch(downloadUrl, {
+        method: "GET",
+        mode: "cors",
+        credentials: "omit"
+      });
+
+      if (!response.ok) {
+        throw new Error("Server could not process your download.");
+      }
+
+      const blob = await response.blob();
+
+      if (blob.size < 1000) {
+        throw new Error("Downloaded file is too small.");
+      }
+
+      const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = downloadUrl;
+      a.style.display = "none";
+      a.href = url;
+
+      const safeTitle = (video.title || "audio").replace(/[^\w\s-]/g, "").trim() || "download";
+      a.download = `${safeTitle}.mp3`;
+
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }, 1000);
+
+      setDlState("ready");
+      setTimeout(() => setDlState("idle"), 5000);
     } catch (err) {
-      console.error("Native download error:", err);
+      console.error("Download error:", err);
       setDlState("failed");
       setTimeout(() => setDlState("idle"), 4000);
     }
@@ -43,36 +75,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
 
   const handleDownload = async () => {
     if (dlState === "preparing") return;
-    const prepareUrl = `${apiBase}/api/prepare?videoId=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
-    const statusUrl = `${apiBase}/api/status?videoId=${encodeURIComponent(video.videoId)}`;
-    setDlState("preparing");
-    try {
-      const res = await fetch(prepareUrl);
-      if (!res.ok) throw new Error("Prepare failed");
-      const data = await res.json();
-      if (data.status === "ready") {
-        setDlState("ready");
-        await triggerBlobDownload();
-        setTimeout(() => setDlState("idle"), 5000);
-        return;
-      }
-      pollRef.current = setInterval(async () => {
-        try {
-          const s = await fetch(statusUrl);
-          if (!s.ok) throw new Error("Status failed");
-          const sd = await s.json();
-          if (sd.status === "ready") {
-            stopPolling();
-            setDlState("ready");
-            await triggerBlobDownload();
-            setTimeout(() => setDlState("idle"), 5000);
-          } else if (sd.status === "failed") {
-            stopPolling(); setDlState("failed");
-            setTimeout(() => setDlState("idle"), 4000);
-          }
-        } catch { stopPolling(); setDlState("failed"); setTimeout(() => setDlState("idle"), 4000); }
-      }, 2500);
-    } catch { setDlState("failed"); setTimeout(() => setDlState("idle"), 4000); }
+    await triggerBlobDownload();
   };
 
   return (

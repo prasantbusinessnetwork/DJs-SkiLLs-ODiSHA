@@ -32,21 +32,34 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title || "audio")}`;
 
     try {
-      console.log(`[Frontend] Fetching audio as BLOB from: ${downloadUrl}`);
+      console.log(`[Frontend] Fetching audio from: ${downloadUrl}`);
 
-      const response = await fetch(downloadUrl);
+      const response = await fetch(downloadUrl, {
+        method: "GET",
+        mode: "cors", // Explicitly expect CORS
+        credentials: "omit"
+      });
 
       if (!response.ok) {
         // Handle explicit JSON error or HTTP error
-        const errJson = await response.json().catch(() => ({ error: "Download fail (HTTP " + response.status + ")" }));
+        const errJson = await response.json().catch(() => ({ error: "Download failed (HTTP " + response.status + ")" }));
         throw new Error(errJson.error || "Server could not process your download.");
       }
 
-      // Read as blob for local saving (Best for cross-browser naming success)
+      // Check Content-Disposition if available for filename
+      // But we fallback to the title parameter passed
+
+      // Read as blob for local saving (Correct approach for mobile Safari/Android Chrome)
       const blob = await response.blob();
 
-      if (blob.size < 5000) {
-        throw new Error("Downloaded file is too small. Something went wrong.");
+      if (blob.size < 50000) { // Small blobs often mean a server-side error was returned as text
+        const text = await blob.text();
+        if (text.includes("error") || text.includes("blocked")) {
+          throw new Error("Download interrupted or blocked by YouTube. Please retry.");
+        }
+        if (blob.size < 1000) {
+          throw new Error("Downloaded file is too small. Please try a different video.");
+        }
       }
 
       const url = window.URL.createObjectURL(blob);
@@ -55,19 +68,22 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
       anchorNode.href = url;
 
       // Sanitized filename for mobile/PC
-      const fileName = `${(title || "audio").replace(/[^\w\s-]/g, "")}.mp3`;
+      const safeTitle = (title || "audio").replace(/[^\w\s-]/g, "").trim() || "download";
+      const fileName = `${safeTitle}.mp3`;
       anchorNode.download = fileName;
 
       document.body.appendChild(anchorNode);
       anchorNode.click();
 
-      // Cleanup
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(anchorNode);
+      // Wait a moment before cleanup to ensure trigger starts
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(anchorNode);
+      }, 1000);
 
       setDlState("success");
-      toast.success("Download Successful!");
-      setTimeout(() => setDlState("idle"), 6000);
+      toast.success("Download started!");
+      setTimeout(() => setDlState("idle"), 5000);
 
     } catch (error: any) {
       console.error("[Frontend Error]", error);

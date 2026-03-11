@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// --- 1. PREVENT CRASHES (Global Error Handlers) ---
+// --- 1. ERROR HANDLING ---
 process.on("uncaughtException", (err) => {
   console.error("🔥 UNCAUGHT EXCEPTION:", err.message);
 });
@@ -23,194 +23,238 @@ process.on("unhandledRejection", (reason) => {
 });
 
 // --- 2. MIDDLEWARE ---
-// Explicitly enable CORS for Vercel/External access
-app.use(cors({ origin: "*", exposedHeaders: ["Content-Disposition"] }));
+// Permissive CORS for Vercel <-> Railway communication
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "OPTIONS"],
+  exposedHeaders: ["Content-Disposition", "Content-Length", "X-Suggested-Filename"],
+  credentials: true
+}));
+
 app.use(express.static(path.join(__dirname, "dist")));
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.json());
 
-// Global Rate Limiter to protect from YouTube IP block
+// Global Rate Limiter to protect Railway IP from being blocked by YouTube
 const limiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  max: 50, // 50 requests per 5 minutes
-  message: { error: "Too many requests. Please wait a few minutes." },
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 20, // 20 requests per minute
+  message: { error: "Too many requests. Please slow down." },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 // --- 3. BINARY DETECTION ---
 const isWin = process.platform === "win32";
-// yt-dlp is installed globally in the Docker /usr/local/bin
+// Railway (Linux) will use the system binaries installed in Dockerfile
 const YTDLP_PATH = isWin ? path.join(__dirname, "yt-dlp.exe") : "yt-dlp";
+// Find ffmpeg: check local bin first (Windows), then system path
 const FFMPEG_PATH = isWin ? path.join(__dirname, "bin", "ffmpeg.exe") : "ffmpeg";
 
 // --- 4. UTILS ---
 function extractVideoId(input) {
   if (!input) return null;
-  if (input.length === 11) return input;
-  const match = input.match(/(?:v=|\/|be\/|embed\/|watch\?v=)([0-9A-Za-z_-]{11})/);
+  const id = input.trim();
+  if (id.length === 11 && /^[0-9A-Za-z_-]{11}$/.test(id)) return id;
+  const match = id.match(/(?:v=|\/|be\/|embed\/|watch\?v=)([0-9A-Za-z_-]{11})/);
   return match ? match[1] : null;
 }
 
-function sanitize(name) {
+function sanitizeFilename(name) {
   return (name || "audio")
     .replace(/[^\w\s-]/g, "")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 50) || "download";
+    .slice(0, 100) || "download";
 }
 
 // --- 5. ENDPOINTS ---
 
-// Health Check for Railway/External Monitoring
+// Health Check
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", uptime: process.uptime(), time: new Date().toISOString() });
+  res.json({
+    status: "ok",
+    platform: process.platform,
+    env: process.env.NODE_ENV || "development",
+    time: new Date().toISOString()
+  });
 });
 
 // MAIN RELIABLE STREAMING DOWNLOAD ENDPOINT
 app.get("/api/download", limiter, async (req, res) => {
   const { videoId, url, title } = req.query;
-  const idToStream = extractVideoId(videoId || url);
+  const vId = extractVideoId(videoId || url);
 
-  if (!idToStream) {
+  if (!vId) {
     return res.status(400).json({ error: "Invalid YouTube Video ID or URL" });
   }
 
-  const startStreaming = (vId, attempt = 1) => {
-    return new Promise((resolve, reject) => {
-      const displayTitle = title || vId || "audio";
-      const safeFilename = sanitize(displayTitle);
-      const encodedFilename = encodeURIComponent(displayTitle);
+  const displayTitle = title || vId || "audio";
+  const safeFilename = sanitizeFilename(displayTitle);
+  const encodedFilename = encodeURIComponent(safeFilename);
 
-      // Only set headers on first attempt to avoid stream corruption on retry
-      if (!res.headersSent) {
-        res.setHeader("Content-Disposition", `attachment; filename="${safeFilename}.mp3"; filename*=UTF-8''${encodedFilename}.mp3`);
-        res.setHeader("Content-Type", "audio/mpeg");
-      }
+  console.log(`[Job] Request: ID=${vId} | Title=${displayTitle}`);
 
-      console.log(`[Job] Starting Stream: ID=${vId} | Attempt=${attempt}`);
+  // Set Headers Immediately to prevent timeout
+  res.setHeader("Content-Disposition", `attachment; filename="${safeFilename}.mp3"; filename*=UTF-8''${encodedFilename}.mp3`);
+  res.setHeader("Content-Type", "audio/mpeg");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
 
-      // yt-dlp Arguments (Optimized for performance and stability)
-      const ytArgs = [
-        "-f", "bestaudio",
-        "--no-check-certificate",
-        "--no-cache-dir",
-        "--extractor-args", "youtube:player-client=android,web",
-        "--force-ipv4",
-        "-o", "-",
-        `https://www.youtube.com/watch?v=${vId}`
-      ];
+  // yt-dlp Arguments (Optimized for performance and stability)
+  const ytArgs = [
+    "-f", "ba/b",
+    "--no-check-certificate",
+    "--no-cache-dir",
+    "--no-playlist",
+    "--extractor-args", "youtube:player-client=android,web",
+    "--force-ipv4",
+    "-o", "-",
+    `https://www.youtube.com/watch?v=${vId}`
+  ];
 
-      // ffmpeg Arguments (Stream straight to Res)
-      const ffArgs = [
-        "-i", "pipe:0",
-        "-f", "mp3",
-        "-b:a", "192k",
-        "pipe:1"
-      ];
+  // ffmpeg Arguments (Stream straight to Res)
+  const ffArgs = [
+    "-i", "pipe:0",
+    "-f", "mp3",
+    "-b:a", "192k",
+    "-ar", "44100",
+    "-ac", "2",
+    "pipe:1"
+  ];
 
-      const ytProcess = spawn(YTDLP_PATH, ytArgs);
-      const ffProcess = spawn(FFMPEG_PATH, ffArgs);
+  let ytProcess;
+  let ffProcess;
+  let headersSent = false;
 
-      ytProcess.stdout.pipe(ffProcess.stdin);
-      // Pipe through result with end: false for retry capability
-      ffProcess.stdout.pipe(res, { end: false });
-
-      let stderrLog = "";
-      ytProcess.stderr.on("data", (d) => { stderrLog += d.toString(); });
-
-      const killAll = () => {
-        try { ytProcess.kill("SIGKILL"); } catch (e) { }
-        try { ffProcess.kill("SIGKILL"); } catch (e) { }
-      };
-
-      ytProcess.on("close", (code) => {
-        if (code !== 0 && code !== null) {
-          killAll();
-          reject(new Error(`yt-dlp failed (code ${code}): ${stderrLog.slice(-100)}`));
-        }
-      });
-
-      ffProcess.on("close", (code) => {
-        if (code === 0) {
-          console.log(`[Job] Success: Finished streaming ${vId}`);
-          res.end();
-          resolve();
-        } else {
-          killAll();
-          reject(new Error(`FFmpeg failed with code ${code}`));
-        }
-      });
-
-      req.on("close", () => {
-        console.log(`[Job] Canceled: Connection closed for ${vId}`);
-        killAll();
-        resolve();
-      });
-    });
+  const killProcesses = () => {
+    if (ytProcess) { try { ytProcess.kill("SIGKILL"); } catch (e) { } }
+    if (ffProcess) { try { ffProcess.kill("SIGKILL"); } catch (e) { } }
   };
 
   try {
-    await startStreaming(idToStream, 1);
-  } catch (err) {
-    console.warn(`[Warn] Attempt 1 failed for ${idToStream}:`, err.message);
-    try {
-      console.log(`[Stream] Retrying ${idToStream} (Attempt 2)...`);
-      await startStreaming(idToStream, 2);
-    } catch (retryErr) {
-      console.error(`[Fatal] Critical fail for ${idToStream}:`, retryErr.message);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Download failed after multiple attempts." });
-      } else {
-        res.end();
+    ytProcess = spawn(YTDLP_PATH, ytArgs);
+    ffProcess = spawn(FFMPEG_PATH, ffArgs);
+
+    // Pipe yt-dlp output to ffmpeg
+    ytProcess.stdout.pipe(ffProcess.stdin);
+
+    // Pipe ffmpeg output to response (With error handling to ignore EPIPE)
+    res.on("error", (err) => {
+      if (err.code !== "EPIPE") console.error("[Response Error]", err.message);
+    });
+
+    ffProcess.stdout.on("error", (err) => {
+      if (err.code !== "EPIPE") console.error("[FFmpeg Output Error]", err.message);
+    });
+
+    ffProcess.stdout.pipe(res);
+
+    // Handle yt-dlp errors
+    let ytError = "";
+    ytProcess.stderr.on("data", (data) => {
+      ytError += data.toString();
+    });
+
+    ytProcess.on("error", (err) => {
+      console.error("[yt-dlp] Process Error:", err.message);
+      killProcesses();
+      if (!res.headersSent) res.status(500).json({ error: "Failed to start yt-dlp" });
+    });
+
+    ffProcess.on("error", (err) => {
+      console.error("[ffmpeg] Process Error:", err.message);
+      killProcesses();
+    });
+
+    ytProcess.on("close", (code) => {
+      if (code !== 0 && code !== null) {
+        console.error(`[yt-dlp] Failed with code ${code}: ${ytError.slice(-200)}`);
+        killProcesses();
+        // We can't send status 500 here because headers are likely already sent
+        if (!res.writableEnded) res.end();
       }
+    });
+
+    ffProcess.on("close", (code) => {
+      console.log(`[ffmpeg] Finished with code ${code}`);
+      killProcesses();
+      if (!res.writableEnded) res.end();
+    });
+
+    // If client disconnects, kill processes
+    req.on("close", () => {
+      console.log(`[Job] Client disconnected: ${vId}`);
+      killProcesses();
+    });
+
+  } catch (err) {
+    console.error("[Fatal] Stream Error:", err.message);
+    killProcesses();
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Internal Server Error during streaming" });
     }
   }
 });
 
-// Latest Videos Mock (To ensure Frontend works even if API key is missing)
+// Channel Videos Endpoint
 app.get("/api/latest-videos", async (req, res) => {
   const API_KEY = process.env.YT_API_KEY;
   const CHANNEL_ID = process.env.CHANNEL_ID || "UC8FEwv0WXF5db-pIs8uJkag";
-  if (!API_KEY) return res.status(500).json({ error: "API Key Missing" });
+
+  if (!API_KEY) {
+    console.warn("[API] Missing YT_API_KEY env var");
+    return res.status(500).json({ error: "Server configuration error: YouTube API key missing." });
+  }
 
   try {
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&maxResults=15&order=date&type=video&key=${API_KEY}`;
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&maxResults=20&order=date&type=video&key=${API_KEY}`;
     const resp = await fetch(url);
     const data = await resp.json();
+
+    if (data.error) {
+      console.error("[YouTube API Error]", data.error);
+      return res.status(data.error.code || 500).json({ error: data.error.message });
+    }
+
     const videos = (data.items || []).map(v => ({
       videoId: v.id.videoId,
       title: v.snippet.title,
       artist: v.snippet.channelTitle,
       youtubeUrl: `https://www.youtube.com/watch?v=${v.id.videoId}`,
-      thumbnail: v.snippet.thumbnails?.medium?.url || "",
+      thumbnail: v.snippet.thumbnails?.high?.url || v.snippet.thumbnails?.medium?.url || "",
+      publishedAt: v.snippet.publishedAt,
     })).filter(v => v.videoId);
+
     res.json({ videos });
-  } catch {
-    res.status(500).json({ error: "Channel fetch failed" });
+  } catch (err) {
+    console.error("[API] Fetch failed:", err.message);
+    res.status(500).json({ error: "Failed to fetch videos from YouTube." });
   }
 });
 
-// Mock Status endpoints for frontend support
+// Backward compatibility mocks
 app.get("/api/prepare", (req, res) => res.json({ status: "ready" }));
 app.get("/api/status", (req, res) => res.json({ status: "ready" }));
 
 // --- 6. SPA ROUTING ---
-app.get("*", (req, res) => {
+// Serve the built index.html for all unknown routes (for React Router)
+app.use((req, res) => {
   const indexPath = path.join(__dirname, "dist", "index.html");
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    res.status(404).send("Frontend build missing. Run 'npm run build' or check your Docker setup.");
+    // If running in development or dist missing
+    res.status(404).send("Frontend assets not found. If this is Railway, check your Docker build.");
   }
 });
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`
-  🚀 SYSTEM REBUILT: PRODUCTION ENGINE READY
   ===========================================
-  Port:    ${PORT} (Railway Compatible)
-  Path:    ${__dirname}
+  🚀 AUDIO ENGINE: ONLINE
+  Port:    ${PORT}
+  System:  ${process.platform}
   Time:    ${new Date().toLocaleString()}
   ===========================================
   `);
