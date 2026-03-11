@@ -39,7 +39,8 @@ const VideoItem = ({ video }: VideoItemProps) => {
       });
 
       if (!response.ok) {
-        throw new Error("Server could not process your download.");
+        const errJson = await response.json().catch(() => ({ error: "Server could not process your download." }));
+        throw new Error(errJson.error || "Download fail (HTTP " + response.status + ")");
       }
 
       const blob = await response.blob();
