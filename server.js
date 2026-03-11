@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import { spawn } from "child_process";
 import fs from "fs";
 import rateLimit from "express-rate-limit";
-import ytdl from "@distube/ytdl-core";
+import play from "play-dl"; // Replaced ytdl-core for bot bypass
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -74,7 +74,7 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// MAIN RELIABLE STREAMING DOWNLOAD ENDPOINT (ytdl-core version)
+// MAIN RELIABLE STREAMING DOWNLOAD ENDPOINT (play-dl version)
 app.get("/api/download", limiter, async (req, res) => {
   let { url, videoId, id, title } = req.query;
   let input = url || videoId || id;
@@ -96,24 +96,21 @@ app.get("/api/download", limiter, async (req, res) => {
   console.log(`[Job] Request: ID=${vId} | URL=${targetUrl}`);
 
   try {
-    // 1. Get info as requested
-    console.log(`[ytdl] Fetching info for ${vId}...`);
-    const info = await ytdl.getInfo(targetUrl);
+    // 1. Get info using play-dl (More robust against bot blocks)
+    console.log(`[play-dl] Fetching info for ${targetUrl}...`);
+    const info = await play.video_info(targetUrl);
 
-    // 2. Filter formats as requested
-    const audioFormats = ytdl.filterFormats(info.formats, "audioonly");
-
-    // 3. Select first available audio format as requested
-    if (!audioFormats.length) {
-      return res.status(404).json({ error: "No audio formats found for this video." });
-    }
-
-    const selectedFormat = audioFormats[0];
-    console.log(`[ytdl] Selected format: ${selectedFormat.audioBitrate}kbps | ${selectedFormat.container}`);
-
-    const displayTitle = title || info.videoDetails.title || vId || "audio";
+    const displayTitle = title || info.video_details.title || vId || "audio";
     const safeFilename = sanitizeFilename(displayTitle);
     const encodedFilename = encodeURIComponent(safeFilename);
+
+    console.log(`[play-dl] Getting stream for: ${displayTitle}`);
+
+    // 2. Stream audio
+    const stream = await play.stream_from_info(info, {
+      discordPlayerCompatibility: true,
+      quality: 2 // highest audio usually
+    });
 
     // FFmpeg pipe for reliable MP3 conversion
     const ffArgs = [
@@ -134,10 +131,8 @@ app.get("/api/download", limiter, async (req, res) => {
 
     ffProcess = spawn(FFMPEG_PATH, ffArgs);
 
-    // Pipe ytdl-core stream to FFmpeg
-    // downloadFromInfo() is more efficient than downloadFromUrl if we already have info
-    const audioStream = ytdl.downloadFromInfo(info, { format: selectedFormat });
-    audioStream.pipe(ffProcess.stdin);
+    // Pipe play-dl stream to FFmpeg
+    stream.stream.pipe(ffProcess.stdin);
 
     // Buffer chunk gating (Ensures we don't send 200 OK for empty streams)
     ffProcess.stdout.once("data", (chunk) => {
@@ -160,15 +155,15 @@ app.get("/api/download", limiter, async (req, res) => {
       if (!res.writableEnded) res.end();
     });
 
-    audioStream.on("error", (err) => {
-      console.error("[ytdl error]:", err.message);
+    stream.stream.on("error", (err) => {
+      console.error("[stream error]:", err.message);
       if (!headersSent) res.status(500).json({ error: "YouTube stream interrupted." });
       killFFmpeg();
     });
 
     req.on("close", () => {
       console.log(`[Job] Client disconnected: ${vId}`);
-      audioStream.destroy();
+      if (stream.stream && typeof stream.stream.destroy === 'function') stream.stream.destroy();
       killFFmpeg();
     });
 
@@ -176,7 +171,7 @@ app.get("/api/download", limiter, async (req, res) => {
     setTimeout(() => {
       if (!headersSent && !res.writableEnded) {
         console.warn(`[Job] Timeout: No data for ${vId}`);
-        audioStream.destroy();
+        if (stream.stream && typeof stream.stream.destroy === 'function') stream.stream.destroy();
         killFFmpeg();
         if (!res.headersSent) res.status(504).json({ error: "Download timeout. Please try again." });
       }
@@ -185,7 +180,7 @@ app.get("/api/download", limiter, async (req, res) => {
   } catch (err) {
     console.error("[Fatal] Stream Error:", err.message);
     if (!res.headersSent) {
-      if (err.message.includes("confirm you are a human")) {
+      if (err.message.includes("Sign in to confirm")) {
         res.status(403).json({ error: "YouTube is blocking the request (Bot detection). Try another video or retry later." });
       } else {
         res.status(500).json({ error: "Could not retrieve audio format or info." });
@@ -230,5 +225,5 @@ app.use((req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 ENGINE READY (ytdl-core) | PORT ${PORT} | ${new Date().toLocaleTimeString()}`);
+  console.log(`🚀 ENGINE READY (play-dl) | PORT ${PORT} | ${new Date().toLocaleTimeString()}`);
 });
