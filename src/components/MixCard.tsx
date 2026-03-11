@@ -21,70 +21,59 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
   const [dlState, setDlState] = useState<DownloadState>("idle");
   const apiBase = getApiBase();
 
+  // --- 1. ROBUST BLOB DOWNLOAD TRIGGER (iOS/Android/Desktop) ---
   const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!videoId || dlState === "downloading") return;
 
     setDlState("downloading");
 
-    // Construct the endpoint
-    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title || "download")}`;
+    // Explicit API endpoint from utils.ts (Works across Vercel/Railway)
+    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title || "audio")}`;
 
     try {
-      console.log(`[Frontend] Fetching blob from: ${downloadUrl}`);
+      console.log(`[Frontend] Fetching audio as BLOB from: ${downloadUrl}`);
 
       const response = await fetch(downloadUrl);
 
       if (!response.ok) {
-        // Try to parse JSON error if any
-        const errorData = await response.json().catch(() => ({ error: "Server error" }));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        // Handle explicit JSON error or HTTP error
+        const errJson = await response.json().catch(() => ({ error: "Download fail (HTTP " + response.status + ")" }));
+        throw new Error(errJson.error || "Server could not process your download.");
       }
 
-      // Check content type to ensure it's actually audio
-      const contentType = response.headers.get("Content-Type");
-      if (!contentType || !contentType.includes("audio")) {
-        console.warn("[Frontend] Unexpected content type:", contentType);
-      }
-
+      // Read as blob for local saving (Best for cross-browser naming success)
       const blob = await response.blob();
-      if (blob.size < 1000) {
-        throw new Error("Downloaded file is too small, likely a failed stream.");
+
+      if (blob.size < 5000) {
+        throw new Error("Downloaded file is too small. Something went wrong.");
       }
 
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.style.display = "none";
-      a.href = url;
+      const anchorNode = document.createElement("a");
+      anchorNode.style.display = "none";
+      anchorNode.href = url;
 
-      // Filename from title or default
-      const fileName = `${(title || "download").replace(/[^\w\s-]/g, "")}.mp3`;
-      a.download = fileName;
+      // Sanitized filename for mobile/PC
+      const fileName = `${(title || "audio").replace(/[^\w\s-]/g, "")}.mp3`;
+      anchorNode.download = fileName;
 
-      document.body.appendChild(a);
-      a.click();
+      document.body.appendChild(anchorNode);
+      anchorNode.click();
 
       // Cleanup
       window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      document.body.removeChild(anchorNode);
 
       setDlState("success");
-      toast.success("Download started successfully!");
-      setTimeout(() => setDlState("idle"), 5000);
+      toast.success("Download Successful!");
+      setTimeout(() => setDlState("idle"), 6000);
 
     } catch (error: any) {
-      console.error("[Frontend] Download error:", error);
+      console.error("[Frontend Error]", error);
       setDlState("error");
       toast.error(error.message || "Download failed. Please try again.");
-      setTimeout(() => setDlState("idle"), 5000);
-    }
-  };
-
-  const handlePlay = () => {
-    if (videoId) {
-      setPlaying(true);
-    } else {
-      window.open(youtubeUrl, "_blank", "noopener,noreferrer");
+      setTimeout(() => setDlState("idle"), 6000);
     }
   };
 
@@ -95,17 +84,25 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
           "Download";
 
   const dlIcon =
-    dlState === "downloading" ? <Loader2 className="h-3 w-3 animate-spin" /> :
-      dlState === "success" ? <CheckCircle className="h-3 w-3" /> :
-        dlState === "error" ? <AlertCircle className="h-3 w-3" /> :
-          <Download className="h-3 w-3" />;
+    dlState === "downloading" ? <Loader2 className="h-4 w-4 animate-spin" /> :
+      dlState === "success" ? <CheckCircle className="h-4 w-4" /> :
+        dlState === "error" ? <AlertCircle className="h-4 w-4" /> :
+          <Download className="h-4 w-4" />;
+
+  const handlePlay = () => {
+    if (videoId) {
+      setPlaying(true);
+    } else {
+      window.open(youtubeUrl, "_blank", "noopener,noreferrer");
+    }
+  };
 
   return (
-    <div className="group w-[200px] min-w-[200px] sm:w-[260px] sm:min-w-[260px] flex-shrink-0 cursor-pointer">
-      <div className="relative overflow-hidden rounded-lg aspect-video">
+    <div className="group w-[220px] sm:w-[280px] flex-shrink-0 cursor-pointer music-card-shadow">
+      <div className="relative overflow-hidden rounded-xl aspect-video bg-zinc-900 border border-zinc-800">
         {playing && videoId ? (
           <iframe
-            className="absolute inset-0 w-full h-full"
+            className="absolute inset-0 w-full h-full rounded-xl"
             src={`https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1`}
             title={title}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -113,51 +110,44 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
             loading="lazy"
           />
         ) : (
-          <div onClick={handlePlay}>
+          <div onClick={handlePlay} className="h-full">
             <LazyImage
               src={thumbnail}
               alt={title}
-              className="aspect-video w-full transition-transform duration-300 group-hover:scale-105"
+              className="aspect-video w-full transition-transform duration-500 group-hover:scale-110 object-cover"
             />
-            <div className="absolute inset-0 flex items-center justify-center gap-3 bg-background/50 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary shadow-lg transition-transform hover:scale-110">
-                <Play className="h-5 w-5 fill-primary-foreground text-primary-foreground" />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100 backdrop-blur-sm">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/90 text-primary-foreground shadow-2xl transition-transform hover:scale-110">
+                <Play className="h-7 w-7 fill-current ml-1" />
               </div>
             </div>
           </div>
         )}
 
         {isNew && (
-          <span className="absolute left-2 top-2 rounded bg-destructive px-2 py-0.5 text-xs font-bold text-destructive-foreground z-10">
-            NEW
+          <span className="absolute left-3 top-3 rounded-full bg-destructive/90 px-3 py-1 text-[10px] font-bold text-white shadow-lg backdrop-blur-md z-10">
+            NEW RELEASE
           </span>
         )}
-        <span className="absolute right-2 top-2 rounded bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground z-10">
-          SKILL
-        </span>
       </div>
 
-      <div className="mt-2 flex items-start justify-between gap-2">
+      <div className="mt-3 flex items-start justify-between px-1">
         <div className="min-w-0 flex-1" onClick={handlePlay}>
-          <h4 className="truncate font-display text-sm font-bold text-foreground">{title}</h4>
-          <p className="truncate text-xs text-muted-foreground">{artist}</p>
-          <span className="mt-1 inline-block rounded bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
-            {tag}
-          </span>
+          <h4 className="truncate font-semibold text-sm text-foreground/90 leading-tight">{title}</h4>
+          <p className="truncate text-[11px] text-muted-foreground mt-0.5">{artist}</p>
         </div>
         <button
           onClick={handleDownload}
           disabled={!videoId || dlState === "downloading"}
-          className={`mt-0.5 flex h-7 items-center gap-1 rounded-full px-2.5 text-[10px] font-bold transition-all
-            ${dlState === "success" ? "bg-green-600 text-white" :
-              dlState === "error" ? "bg-orange-600 text-white" :
-                "bg-destructive text-destructive-foreground hover:opacity-80"}
-            ${dlState === "downloading" ? "opacity-70 cursor-wait" : ""}
+          className={`flex-shrink-0 flex h-8 items-center gap-2 rounded-lg px-3 text-[11px] font-bold transition-all
+            ${dlState === "success" ? "bg-emerald-600 text-white" :
+              dlState === "error" ? "bg-zinc-700 text-white" :
+                "bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary"}
+            ${dlState === "downloading" ? "opacity-70 cursor-wait bg-zinc-800" : ""}
           `}
-          title={dlState === "error" ? "Try again" : "Download MP3"}
         >
           {dlIcon}
-          {dlLabel}
+          <span className="hidden sm:inline">{dlLabel}</span>
         </button>
       </div>
     </div>

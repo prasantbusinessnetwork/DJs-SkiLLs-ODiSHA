@@ -1,29 +1,33 @@
 FROM node:20-slim
 
-# Install system dependencies (ffmpeg, python3 for yt-dlp, and curl)
+# --- 1. INSTALL SYSTEM BINARIES (FFmpeg + Python3 + yt-dlp) ---
+# yt-dlp requires python3 for extraction.
 RUN apt-get update && \
     apt-get install -y ffmpeg python3 curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install yt-dlp globally
+# Install Latest Linux yt-dlp globally
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
     chmod a+rx /usr/local/bin/yt-dlp
 
 WORKDIR /app
 
-# Copy dependency files first for better caching
+# --- 2. INSTALL NODE DEPENDENCIES ---
+# Copy package manifests first for better Docker layer caching
 COPY package*.json ./
-RUN npm install
+RUN npm install --production=false
 
+# --- 3. BUILD FRONTEND ---
 # Copy all source files
 COPY . .
-
-# Build the frontend (Vite generates 'dist' folder)
+# Vite build creates the 'dist' folder
 RUN npm run build
 
-# Ensure the app runs on Port 3000 (default for our server.js)
+# --- 4. RUN SERVER ---
+# Ensure port 3000 is open (Railway will map the PORT env var accordingly)
+# Our server.js also listens on 0.0.0.0 to be reachable.
 EXPOSE 3000
 
-# Start the application
+# Start the built production server
 CMD ["npm", "start"]
