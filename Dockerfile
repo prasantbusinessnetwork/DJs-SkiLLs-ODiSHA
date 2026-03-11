@@ -35,8 +35,8 @@ COPY --from=build /app/dist ./dist
 
 # Copy the main backend code and other necessary files
 COPY server.js .
-COPY .env .
-# Note: yt-dlp.exe and other Windows binaries will not be used in Railway
+# Note: .env is typically gitignored and should NOT be copied. 
+# Railway environment variables should be set in the dashboard.
 
 # Railway maps the PORT env var for us.
 # Express server is configured to listen on 0.0.0.0:${PORT}
