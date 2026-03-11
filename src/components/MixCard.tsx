@@ -13,106 +13,30 @@ interface MixCardProps {
   videoId?: string;
 }
 
-type DownloadState = "idle" | "preparing" | "ready" | "failed";
-
 const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: MixCardProps) => {
   const [playing, setPlaying] = useState(false);
-  const [dlState, setDlState] = useState<DownloadState>("idle");
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const apiBase = getApiBase();
-
-  const stopPolling = () => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  };
-
-  const sanitize = (name: string) => {
-    return (name || "download").replace(/[^\w\s-]/gi, '').trim() || "download";
-  };
-
-  const triggerBlobDownload = async () => {
-    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId || "")}&title=${encodeURIComponent(title)}`;
-    try {
-      // By using native OS tools, Mobile browsers won't run empty or throw "Failed" notification from Blob memory clear
-      const a = document.createElement("a");
-      a.href = downloadUrl;
-      // Triggers native download manager
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error("Native download error:", error);
-      setDlState("failed");
-      setTimeout(() => setDlState("idle"), 4000);
-    }
-  };
 
   const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!videoId || dlState === "preparing") return;
+    if (!videoId || downloading) return;
 
-    const prepareUrl = `${apiBase}/api/prepare?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title)}`;
-    const statusUrl = `${apiBase}/api/status?videoId=${encodeURIComponent(videoId)}`;
-    // const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title)}`; // No longer directly used here
-
-    setDlState("preparing");
+    setDownloading(true);
 
     try {
-      const res = await fetch(prepareUrl);
-      if (!res.ok) throw new Error("Prepare failed");
-      const data = await res.json();
+      const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title || "download")}`;
 
-      if (data.status === "ready") {
-        // Already cached — download immediately
-        setDlState("ready");
-        await triggerBlobDownload(); // Use the new function
-        setTimeout(() => setDlState("idle"), 5000);
-        return;
-      }
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
 
-      // Start polling
-      pollRef.current = setInterval(async () => {
-        try {
-          const statusRes = await fetch(statusUrl);
-          if (!statusRes.ok) throw new Error("Status check failed");
-          const statusData = await statusRes.json();
-
-          if (statusData.status === "ready") {
-            stopPolling();
-            setDlState("ready");
-            // Auto-trigger blob download immediately when ready
-            await triggerBlobDownload();
-            setTimeout(() => setDlState("idle"), 5000);
-          } else if (statusData.status === "failed") {
-            stopPolling();
-            setDlState("failed");
-            setTimeout(() => setDlState("idle"), 4000);
-          }
-        } catch {
-          stopPolling();
-          setDlState("failed");
-          setTimeout(() => setDlState("idle"), 4000);
-        }
-      }, 2500);
-
-    } catch {
-      setDlState("failed");
-      setTimeout(() => setDlState("idle"), 4000);
-    }
-  };
-
-  const handleFinalDownload = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    // The dlState should already be "ready" when this is called.
-    // If triggerBlobDownload fails, it will set dlState to "failed".
-    await triggerBlobDownload();
-    // If triggerBlobDownload succeeds, the state remains "ready" until the timeout from polling,
-    // or we can explicitly set it to idle here if it's a direct "Save MP3" click.
-    // For consistency with the polling path, let's let the user see "Done!" for a bit.
-    if (dlState === "ready") { // Only if it was successful and not changed to "failed" by triggerBlobDownload
-      setTimeout(() => setDlState("idle"), 5000);
+      setTimeout(() => setDownloading(false), 3000);
+    } catch (error) {
+      console.error("Native download error:", error);
+      setTimeout(() => setDownloading(false), 3000);
     }
   };
 
@@ -124,16 +48,8 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     }
   };
 
-  const dlLabel =
-    dlState === "preparing" ? "Preparing..." :
-      dlState === "ready" ? "Done!" :
-        dlState === "failed" ? "Failed" :
-          "Download";
-
-  const dlIcon =
-    dlState === "preparing" ? <Loader2 className="h-3 w-3 animate-spin" /> :
-      dlState === "ready" ? <CheckCircle className="h-3 w-3" /> :
-        <Download className="h-3 w-3" />;
+  const dlLabel = downloading ? "Downloading..." : "Download";
+  const dlIcon = downloading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />;
 
   return (
     <div className="group w-[200px] min-w-[200px] sm:w-[260px] sm:min-w-[260px] flex-shrink-0 cursor-pointer">
@@ -181,18 +97,15 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
           </span>
         </div>
         <button
-          onClick={dlState === "ready" ? handleFinalDownload : handleDownload}
-          disabled={!videoId || dlState === "preparing"}
+          onClick={handleDownload}
+          disabled={!videoId || downloading}
           className={`mt-0.5 flex h-7 items-center gap-1 rounded-full px-2.5 text-[10px] font-bold transition-all
-            ${dlState === "ready" ? "bg-green-600 text-white animate-pulse" :
-              dlState === "failed" ? "bg-gray-500 text-white" :
-                "bg-destructive text-destructive-foreground hover:opacity-80"}
-            ${dlState === "preparing" ? "opacity-70 cursor-wait" : ""}
+            ${downloading ? "opacity-70 cursor-wait bg-destructive text-destructive-foreground" : "bg-destructive text-destructive-foreground hover:opacity-80"}
           `}
-          title={dlState === "ready" ? "Click to save MP3" : "Prepare MP3"}
+          title={"Download MP3"}
         >
           {dlIcon}
-          {dlState === "ready" ? "Save MP3" : dlLabel}
+          {dlLabel}
         </button>
       </div>
     </div>
