@@ -1,7 +1,8 @@
-import { useState, useRef } from "react";
-import { Play, Download, Loader2, CheckCircle } from "lucide-react";
+import { useState } from "react";
+import { Play, Download, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { getApiBase } from "../lib/utils";
 import LazyImage from "./LazyImage";
+import { toast } from "sonner";
 
 interface MixCardProps {
   title: string;
@@ -13,30 +14,69 @@ interface MixCardProps {
   videoId?: string;
 }
 
+type DownloadState = "idle" | "downloading" | "success" | "error";
+
 const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: MixCardProps) => {
   const [playing, setPlaying] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  const [dlState, setDlState] = useState<DownloadState>("idle");
   const apiBase = getApiBase();
 
   const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!videoId || downloading) return;
+    if (!videoId || dlState === "downloading") return;
 
-    setDownloading(true);
+    setDlState("downloading");
+
+    // Construct the endpoint
+    const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title || "download")}`;
 
     try {
-      const downloadUrl = `${apiBase}/api/download?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title || "download")}`;
+      console.log(`[Frontend] Fetching blob from: ${downloadUrl}`);
 
+      const response = await fetch(downloadUrl);
+
+      if (!response.ok) {
+        // Try to parse JSON error if any
+        const errorData = await response.json().catch(() => ({ error: "Server error" }));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      // Check content type to ensure it's actually audio
+      const contentType = response.headers.get("Content-Type");
+      if (!contentType || !contentType.includes("audio")) {
+        console.warn("[Frontend] Unexpected content type:", contentType);
+      }
+
+      const blob = await response.blob();
+      if (blob.size < 1000) {
+        throw new Error("Downloaded file is too small, likely a failed stream.");
+      }
+
+      const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = downloadUrl;
+      a.style.display = "none";
+      a.href = url;
+
+      // Filename from title or default
+      const fileName = `${(title || "download").replace(/[^\w\s-]/g, "")}.mp3`;
+      a.download = fileName;
+
       document.body.appendChild(a);
       a.click();
+
+      // Cleanup
+      window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
 
-      setTimeout(() => setDownloading(false), 3000);
-    } catch (error) {
-      console.error("Native download error:", error);
-      setTimeout(() => setDownloading(false), 3000);
+      setDlState("success");
+      toast.success("Download started successfully!");
+      setTimeout(() => setDlState("idle"), 5000);
+
+    } catch (error: any) {
+      console.error("[Frontend] Download error:", error);
+      setDlState("error");
+      toast.error(error.message || "Download failed. Please try again.");
+      setTimeout(() => setDlState("idle"), 5000);
     }
   };
 
@@ -48,8 +88,17 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     }
   };
 
-  const dlLabel = downloading ? "Downloading..." : "Download";
-  const dlIcon = downloading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />;
+  const dlLabel =
+    dlState === "downloading" ? "Downloading..." :
+      dlState === "success" ? "Saved!" :
+        dlState === "error" ? "Retry" :
+          "Download";
+
+  const dlIcon =
+    dlState === "downloading" ? <Loader2 className="h-3 w-3 animate-spin" /> :
+      dlState === "success" ? <CheckCircle className="h-3 w-3" /> :
+        dlState === "error" ? <AlertCircle className="h-3 w-3" /> :
+          <Download className="h-3 w-3" />;
 
   return (
     <div className="group w-[200px] min-w-[200px] sm:w-[260px] sm:min-w-[260px] flex-shrink-0 cursor-pointer">
@@ -98,11 +147,14 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
         </div>
         <button
           onClick={handleDownload}
-          disabled={!videoId || downloading}
+          disabled={!videoId || dlState === "downloading"}
           className={`mt-0.5 flex h-7 items-center gap-1 rounded-full px-2.5 text-[10px] font-bold transition-all
-            ${downloading ? "opacity-70 cursor-wait bg-destructive text-destructive-foreground" : "bg-destructive text-destructive-foreground hover:opacity-80"}
+            ${dlState === "success" ? "bg-green-600 text-white" :
+              dlState === "error" ? "bg-orange-600 text-white" :
+                "bg-destructive text-destructive-foreground hover:opacity-80"}
+            ${dlState === "downloading" ? "opacity-70 cursor-wait" : ""}
           `}
-          title={"Download MP3"}
+          title={dlState === "error" ? "Try again" : "Download MP3"}
         >
           {dlIcon}
           {dlLabel}
