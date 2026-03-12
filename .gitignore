@@ -7,10 +7,13 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
+yt-dlp.exe
+.env
 dist-ssr
 *.local
+
+node_modules
+dist
 
 # Editor directories and files
 .vscode/*

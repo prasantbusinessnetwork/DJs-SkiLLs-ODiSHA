@@ -13,7 +13,8 @@ This project is a high-performance web application for DJs SkiLLs ODiSHA, featur
 ### Prerequisites
 
 - Node.js (v18 or later)
-- npm or yarn
+- Docker (for production emulation)
+- FFmpeg & yt-dlp (for local non-docker runs)
 
 ### Installation
 
@@ -25,21 +26,28 @@ This project is a high-performance web application for DJs SkiLLs ODiSHA, featur
 
 ### Running Locally
 
-1. Start the frontend development server:
+1. Start the frontend:
    ```bash
    npm run dev
    ```
-2. Start the backend download server:
+2. Start the backend:
    ```bash
    node server.mjs
    ```
+
+## Deploy (Docker / Railway)
+
+1. Ensure `yt-dlp.exe` is removed (`git rm yt-dlp.exe`).
+2. Push to GitHub. Railway will detect the `Dockerfile` and build the Linux-native environment automatically.
+3. The server uses streaming and Redis caching (optional) to ensure high performance.
 
 ## Project Structure
 
 - `src/`: React components, pages, and hooks.
 - `public/`: Static assets.
-- `server.mjs`: Backend server for processing YouTube downloads.
-- `yt-dlp.exe`: Standalone binary for robust YouTube communication.
+- `server.mjs`: High-performance streaming backend.
+- `Dockerfile`: Production environment definition.
+- `.github/workflows/ci.yml`: Automated CI/CD health checks.
 
 ## Credits
 

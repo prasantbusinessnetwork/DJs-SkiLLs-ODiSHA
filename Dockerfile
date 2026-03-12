@@ -1,30 +1,30 @@
-FROM node:20-slim
+FROM node:18-bullseye
 
-# Install system dependencies: Python3 (REQUIRED for yt-dlp) and FFmpeg
+# Install system deps
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    python3 \
-    ffmpeg \
-    curl \
-    ca-certificates && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      python3 python3-pip ffmpeg curl ca-certificates build-essential && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install yt-dlp (linux) system-wide
+RUN python3 -m pip install --upgrade pip && \
+    python3 -m pip install --upgrade "yt-dlp[default]"
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files & install node deps
 COPY package*.json ./
+RUN npm ci --only=production
 
-# Install dependencies (youtube-dl-exec will download the binary during postinstall)
-RUN npm install
-
-# Copy the rest of the code
+# Copy source
 COPY . .
 
-# Satify Railway build requirement (if it uses Docker build then npm run build)
-# We already added "build": "echo ..." to package.json
-RUN npm run build
+# Ensure server is executable
+RUN chmod +x server.mjs || true
+
+ENV NODE_ENV=production
+ENV PORT=${PORT:-3000}
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+CMD ["node", "server.mjs"]

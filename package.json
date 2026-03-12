@@ -1,18 +1,23 @@
 {
-  "name": "yt-mp3-backend",
-  "version": "2.1.0",
+  "name": "djs-skills-odisha",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "build": "echo 'No build step required for backend'"
+    "start": "node server.mjs",
+    "dev": "node server.mjs",
+    "test": "node ./test/healthcheck.js || true",
+    "ci:test": "node ./test/healthcheck.js",
+    "postinstall": "node ./scripts/postinstall-checks.js || true"
   },
   "dependencies": {
+    "ioredis": "^5.3.2",
+    "express-rate-limit": "^6.7.0",
+    "helmet": "^7.0.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.18.2",
-    "ffmpeg-static": "^5.2.0",
-    "youtube-dl-exec": "^2.4.0"
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

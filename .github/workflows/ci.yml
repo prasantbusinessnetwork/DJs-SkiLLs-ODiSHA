@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build Docker image
+        run: docker build -t djs-server .
+      - name: Run container
+        run: docker run -d --name djs_test -p 3000:3000 djs-server || true
+      - name: Wait for startup
+        run: sleep 10
+      - name: Healthcheck
+        run: |
+          node test/healthcheck.js || (docker logs djs_test && exit 1)
+      - name: Stop container
+        run: docker stop djs_test || true
