@@ -59,15 +59,31 @@ app.get("/api/download", async (req, res) => {
     // Pipe stdout to response
     stream.stdout.pipe(res);
 
+    let stderrLog = "";
     stream.stderr.on("data", (data) => {
       const msg = data.toString();
-      if (msg.includes("ERROR")) console.error(`[ytdl-error] ${msg}`);
+      stderrLog += msg;
+      if (msg.includes("ERROR")) console.error(`[ytdl-error-v4] ${msg}`);
     });
 
     stream.on("error", (err) => {
-      console.error("[Fatal Stream Error]", err);
+      console.error("[Fatal Stream Error v4]", err);
       if (!res.headersSent) {
-        res.status(500).json({ error: "Download failed (Stream error - v3)" });
+        res.status(500).json({ 
+          error: "Download failed (Stream error - v4)",
+          details: err.message,
+          log: stderrLog.slice(-500)
+        });
+      }
+    });
+
+    stream.on("close", (code) => {
+      if (code !== 0 && !res.headersSent) {
+        console.error(`[Job v4] Failed with code ${code}`);
+        res.status(500).json({ 
+          error: `Download failed (Exit code ${code} - v4)`,
+          log: stderrLog.slice(-500)
+        });
       }
     });
 
@@ -79,9 +95,12 @@ app.get("/api/download", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("[Fatal Exception v3]", err);
+    console.error("[Fatal Exception v4]", err);
     if (!res.headersSent) {
-      res.status(500).json({ error: "Server encountered a fatal error (v3)" });
+      res.status(500).json({ 
+        error: "Server encountered a fatal error (v4)",
+        details: err.message
+      });
     }
   }
 });
