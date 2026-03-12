@@ -10,9 +10,23 @@ import Disclaimer from "./pages/Disclaimer";
 import AllVideos from "./pages/AllVideos";
 import NotFound from "./pages/NotFound";
 
+import { useEffect } from "react";
+import { getApiBase } from "./lib/utils";
+
 const queryClient = new QueryClient();
 
-const App = () => (
+const App = () => {
+  // Keep-alive ping to Railway
+  useEffect(() => {
+    const ping = () => {
+      fetch(`${getApiBase()}/api/health`).catch(() => {});
+    };
+    ping();
+    const interval = setInterval(ping, 1000 * 60 * 10); // Every 10 mins
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />

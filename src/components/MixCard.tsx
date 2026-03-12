@@ -21,34 +21,47 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
   const [dlState, setDlState] = useState<DownloadState>("idle");
   const apiBase = getApiBase();
 
-  // --- 1. STABLE DIRECT DOWNLOAD TRIGGER ---
-  const handleDownload = (e: React.MouseEvent) => {
+  // --- 1. ROBUST BLOB DOWNLOAD TRIGGER ---
+  const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!videoId) return;
 
     setDlState("downloading");
-    
-    // Use the reliable hardcoded API base from config.ts
-    const downloadUrl = `${apiBase}/api/download?url=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title || "audio")}`;
+    const downloadUrl = `${apiBase}/api/download?url=${encodeURIComponent(videoId)}`;
 
     try {
-      console.log(`[Frontend] Triggering Stable Download: ${downloadUrl}`);
+      console.log(`[Frontend] Fetching Blob: ${downloadUrl}`);
       
-      // We use window.location.href for maximum mobile/desktop compatibility
-      // This is the most stable way to handle streaming downloads on browsers
-      window.location.href = downloadUrl;
+      const response = await fetch(downloadUrl);
+      
+      if (!response.ok) {
+        // Try to parse error message from JSON if possible
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned ${response.status}`);
+      }
 
-      // Reset state after a delay as we can't detect when the stream starts
-      setTimeout(() => {
-        setDlState("success");
-        toast.success("Download starting...");
-        setTimeout(() => setDlState("idle"), 5000);
-      }, 2000);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = url;
+      // Use title or videoId as filename
+      const safeTitle = (title || "audio").replace(/[^a-z0-9]/gi, "_").toLowerCase();
+      a.download = `${safeTitle}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      setDlState("success");
+      toast.success("Download complete!");
+      setTimeout(() => setDlState("idle"), 5000);
 
     } catch (error: any) {
-      console.error("[Frontend Error]", error);
+      console.error("[Download Error]", error);
       setDlState("error");
-      toast.error("Could not start download.");
+      toast.error(`Download failed: ${error.message}`);
       setTimeout(() => setDlState("idle"), 6000);
     }
   };
