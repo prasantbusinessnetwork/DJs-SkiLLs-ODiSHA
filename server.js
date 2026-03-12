@@ -42,10 +42,16 @@ app.get("/api/download", async (req, res) => {
       ffmpegLocation: ffmpegPath,
       noCheckCertificate: true,
       noPlaylist: true,
-      format: "bestaudio/best",
-      // Bypass YouTube bot detection
+      // More flexible format string to avoid "format not found" errors
+      format: "bestaudio[ext=m4a]/bestaudio/best",
+      // Force IPv4 as some data centers have IPv6 related blocks
+      forceIpv4: true,
+      // Simulated mobile client is the strongest bypass
+      extractorArgs: "youtube:player_client=android,ios",
       addHeader: [
-        'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept-Language:en-US,en;q=0.9',
+        'Referer:https://www.google.com/'
       ]
     });
 
