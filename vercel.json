@@ -1,20 +1,15 @@
 {
-  "functions": {
-    "api/*.ts": {
-      "maxDuration": 10
-    }
-  },
-  "routes": [
+  "version": 2,
+  "name": "djs-skills-odisha-frontend",
+  "framework": "vite",
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "source": "/(api|download|health)(.*)",
+      "destination": "/api/$1$2"
     },
     {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
