@@ -25,11 +25,8 @@ process.on("unhandledRejection", (reason) => {
 // --- 2. MIDDLEWARE ---
 app.use(cors({
   origin: "*",
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-  exposedHeaders: ["Content-Disposition", "Content-Length", "X-Suggested-Filename"],
-  credentials: true,
-  maxAge: 86400 // 24 hours
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type"]
 }));
 
 // Global Timeout Protection (5 minutes for long downloads)
@@ -81,13 +78,7 @@ function sanitizeFilename(name) {
 
 app.get("/api/health", (req, res) => {
   res.json({
-    status: "ok",
-    platform: process.platform,
-    env: process.env.NODE_ENV || "development",
-    binaries: {
-      ytdlp: fs.existsSync(YTDLP_PATH) || !isWin,
-      ffmpeg: fs.existsSync(FFMPEG_PATH) || !isWin
-    }
+    status: "server running"
   });
 });
 
@@ -158,10 +149,9 @@ app.get("/api/download", limiter, async (req, res) => {
         headersSent = true;
         console.log(`[Job] Data detected (${formatSpec}) for ${vId}. Streaming...`);
         res.writeHead(200, {
-          "Content-Disposition": `attachment; filename="${safeFilename}.mp3"; filename*=UTF-8''${encodedFilename}.mp3`,
+          "Content-Disposition": "attachment",
           "Content-Type": "audio/mpeg",
-          "Cache-Control": "no-cache",
-          "Connection": "keep-alive"
+          "Cache-Control": "no-cache"
         });
         res.write(chunk);
       });
