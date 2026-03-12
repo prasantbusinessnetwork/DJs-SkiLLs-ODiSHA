@@ -14,6 +14,8 @@ import os from 'os';
 
 const PORT = process.env.PORT || 3000;
 const REDIS_URL = process.env.REDIS_URL || null;
+const YT_API_KEY = process.env.YT_API_KEY || process.env.YOUTUBE_API_KEY || null;
+const CHANNEL_ID = process.env.CHANNEL_ID || process.env.YOUTUBE_CHANNEL_ID || null;
 
 let redis = null;
 if (REDIS_URL) {
@@ -181,6 +183,57 @@ async function handleDownload(req, res, query) {
   }
 }
 
+async function handleLatestVideos(req, res, query) {
+  if (!YT_API_KEY || !CHANNEL_ID) {
+    res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ error: 'YT_CONFIG_MISSING' }));
+    return;
+  }
+
+  let maxResults = Math.min(Number(query.get('maxResults') || 6), 50);
+  const cacheKey = `yt:latest:${CHANNEL_ID}:${maxResults}`;
+  
+  if (redis) {
+    const cached = await cacheGet(cacheKey);
+    if (cached) {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(cached);
+      return;
+    }
+  }
+
+  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&order=date&maxResults=${maxResults}&type=video&key=${YT_API_KEY}`;
+  const response = await fetch(url);
+  
+  if (!response.ok) {
+    throw new Error(`YouTube API returned ${response.status}`);
+  }
+
+  const data = await response.json();
+  const videos = data.items.map((item, index) => {
+    const videoId = item.id?.videoId;
+    const snippet = item.snippet;
+    if (!videoId || !snippet) return null;
+    if (snippet.title.toLowerCase().includes("private") || snippet.title.toLowerCase().includes("deleted")) return null;
+    
+    return {
+      title: snippet.title,
+      artist: snippet.channelTitle,
+      tag: index === 0 ? "Latest" : "Remix",
+      youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      videoId,
+      thumbnail: snippet.thumbnails?.medium?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+      publishedAt: snippet.publishedAt,
+    };
+  }).filter(v => v !== null);
+
+  const result = JSON.stringify(videos);
+  if (redis) await cacheSet(cacheKey, result, 1800); // 30 min cache
+
+  res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+  res.end(result);
+}
+
 function requestHandler(req, res) {
   const u = new URL(req.url, `http://${req.headers.host}`);
   
@@ -197,7 +250,16 @@ function requestHandler(req, res) {
 
   if (u.pathname === '/health' || u.pathname === '/api/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify({ status: 'ok', hostname: os.hostname(), engine: 'blueprint-v1' }));
+    res.end(JSON.stringify({ status: 'ok', hostname: os.hostname(), engine: 'blueprint-v2' }));
+    return;
+  }
+
+  if (u.pathname === '/api/latest-videos') {
+    handleLatestVideos(req, res, u.searchParams).catch(e => {
+      console.error('latest-videos error', e);
+      res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
     return;
   }
   
