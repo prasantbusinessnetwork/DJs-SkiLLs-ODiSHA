@@ -13,11 +13,11 @@ RUN python3 -m pip install --upgrade pip && \
 WORKDIR /app
 
 # Copy package files & install node deps
-COPY package*.json ./
-RUN npm ci --only=production
+COPY backend/package*.json ./
+RUN npm install --production
 
 # Copy source
-COPY . .
+COPY backend/ ./
 
 # Ensure server is executable
 RUN chmod +x server.mjs || true
