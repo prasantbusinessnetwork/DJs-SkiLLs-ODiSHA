@@ -26,9 +26,22 @@ process.on("unhandledRejection", (reason) => {
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
   exposedHeaders: ["Content-Disposition", "Content-Length", "X-Suggested-Filename"],
-  credentials: true
+  credentials: true,
+  maxAge: 86400 // 24 hours
 }));
+
+// Global Timeout Protection (5 minutes for long downloads)
+app.use((req, res, next) => {
+  res.setTimeout(300000, () => {
+    console.error(`[Timeout] Request to ${req.url} timed out.`);
+    if (!res.headersSent) {
+      res.status(504).json({ error: "Request Timeout: The server took too long to respond." });
+    }
+  });
+  next();
+});
 
 app.use(express.static(path.join(__dirname, "dist")));
 app.use(express.static(path.join(__dirname, "public")));
@@ -70,7 +83,11 @@ app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
     platform: process.platform,
-    env: process.env.NODE_ENV || "development"
+    env: process.env.NODE_ENV || "development",
+    binaries: {
+      ytdlp: fs.existsSync(YTDLP_PATH) || !isWin,
+      ffmpeg: fs.existsSync(FFMPEG_PATH) || !isWin
+    }
   });
 });
 
@@ -111,6 +128,7 @@ app.get("/api/download", limiter, async (req, res) => {
         "--no-cache-dir",
         "--no-playlist",
         "--force-ipv4",
+        "--extractor-args", "youtube:player_client=android,ios",
         "-o", "-",
         targetUrl
       ];
@@ -182,9 +200,9 @@ app.get("/api/download", limiter, async (req, res) => {
       setTimeout(() => {
         if (!headersSent) {
           killProcesses();
-          resolve({ success: false, error: "Timeout during format extraction" });
+          resolve({ success: false, error: "60s Timeout reached during format extraction" });
         }
-      }, 30000);
+      }, 60000);
     });
   }
 
@@ -207,7 +225,12 @@ app.get("/api/download", limiter, async (req, res) => {
 
   } catch (err) {
     console.error("[Fatal] Download Error:", err.message);
-    if (!res.headersSent) res.status(500).json({ error: "Internal Server Error during download." });
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: "Internal Server Error during download.",
+        details: err.message 
+      });
+    }
   }
 });
 

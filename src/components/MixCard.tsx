@@ -87,10 +87,28 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
       setTimeout(() => setDlState("idle"), 5000);
 
     } catch (error: any) {
-      console.error("[Frontend Error]", error);
-      setDlState("error");
-      toast.error(error.message || "Download failed. Please try again.");
-      setTimeout(() => setDlState("idle"), 6000);
+      console.warn("[Frontend] Primary download method failed, attempting Direct Fallback...", error.message);
+      
+      // FALLBACK: Direct Link (Bypasses Blob limitations)
+      try {
+        setDlState("downloading");
+        toast.info("Retrying with mobile-friendly method...");
+        
+        // This triggers a native browser download/navigation
+        // Most mobile browsers handle this much better than Blobs
+        window.location.href = downloadUrl;
+        
+        // We set to success because the browser has took over the job
+        setTimeout(() => {
+           setDlState("success");
+           setTimeout(() => setDlState("idle"), 5000);
+        }, 2000);
+      } catch (fallbackErr) {
+        console.error("[Frontend Error]", fallbackErr);
+        setDlState("error");
+        toast.error("Download failed. YouTube might be blocking the request.");
+        setTimeout(() => setDlState("idle"), 6000);
+      }
     }
   };
 

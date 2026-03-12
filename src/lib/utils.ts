@@ -22,21 +22,18 @@ export function getApiBase() {
     return cleanUrl;
   }
 
+  const PRODUCTION_URL = "https://djs-skills-odisha-production.up.railway.app";
+
   // Priority 2: Detect Local Development
   if (typeof window !== "undefined") {
     const hostname = window.location.hostname;
+    // Strictly local check
     if (hostname === "localhost" || hostname === "127.0.0.1" || hostname.startsWith("192.168.")) {
-      return `http://${hostname}:3000`; // Standard local dev port
-    }
-
-    // Priority 3: Auto-detect if we're on a Vercel/Railway preview URL 
-    // Usually, the API is on a similar domain or a subdomain
-    if (hostname.includes("vercel.app")) {
-      // Many people name their Railway project after the repo name
-      return "https://djs-skills-odisha-production.up.railway.app";
+      return `http://${hostname}:3000`; 
     }
   }
 
-  // Final Fallback (Railway Engine)
-  return "https://djs-skills-odisha-production.up.railway.app";
+  // Priority 3: Fallback to Production Railway engine
+  // This ensures Vercel deployments always call the real backend
+  return PRODUCTION_URL;
 }

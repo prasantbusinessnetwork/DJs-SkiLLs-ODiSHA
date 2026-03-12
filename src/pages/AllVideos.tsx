@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import LazyImage from "@/components/LazyImage";
 import { getApiBase } from "@/lib/utils";
 import { YouTubeVideo } from "@/lib/youtube";
+import { toast } from "sonner";
 
 type DownloadState = "idle" | "preparing" | "ready" | "failed";
 
@@ -73,11 +74,28 @@ const VideoItem = ({ video }: VideoItemProps) => {
       }, 1000);
 
       setDlState("ready");
+      toast.success("Download started!");
       setTimeout(() => setDlState("idle"), 5000);
-    } catch (err) {
-      console.error("Download error:", err);
-      setDlState("failed");
-      setTimeout(() => setDlState("idle"), 4000);
+    } catch (err: any) {
+      console.warn("Primary download failed, attempting Direct Fallback:", err.message);
+      
+      try {
+        setDlState("preparing");
+        toast.info("Retrying with direct method...");
+        
+        // FALLBACK: Direct navigation/download trigger
+        window.location.href = downloadUrl;
+        
+        setTimeout(() => {
+          setDlState("ready");
+          setTimeout(() => setDlState("idle"), 5000);
+        }, 2000);
+      } catch (fallbackErr) {
+        console.error("All download methods failed:", fallbackErr);
+        setDlState("failed");
+        toast.error("Download failed. Please try again later.");
+        setTimeout(() => setDlState("idle"), 4000);
+      }
     }
   };
 
