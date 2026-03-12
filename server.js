@@ -42,16 +42,17 @@ app.get("/api/download", async (req, res) => {
       ffmpegLocation: ffmpegPath,
       noCheckCertificate: true,
       noPlaylist: true,
-      // More flexible format string to avoid "format not found" errors
+      // Best audio selection for stability
       format: "bestaudio[ext=m4a]/bestaudio/best",
-      // Force IPv4 as some data centers have IPv6 related blocks
       forceIpv4: true,
-      // Simulated mobile client is the strongest bypass
-      extractorArgs: "youtube:player_client=android,ios",
+      // Aggressive extractor-args
+      extractorArgs: "youtube:player_client=android,ios;youtube:skip=webpage,hls",
+      userAgent: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
       addHeader: [
-        'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept-Language:en-US,en;q=0.9',
-        'Referer:https://www.google.com/'
+        'Accept: */*',
+        'Accept-Language: en-US,en;q=0.9',
+        'Origin: https://www.youtube.com',
+        'Referer: https://www.youtube.com/'
       ]
     });
 
@@ -60,13 +61,13 @@ app.get("/api/download", async (req, res) => {
 
     stream.stderr.on("data", (data) => {
       const msg = data.toString();
-      if (msg.includes("ERROR")) console.error(`[ytdl] ${msg}`);
+      if (msg.includes("ERROR")) console.error(`[ytdl-error] ${msg}`);
     });
 
     stream.on("error", (err) => {
-      console.error("[Fatal Error]", err);
+      console.error("[Fatal Stream Error]", err);
       if (!res.headersSent) {
-        res.status(500).json({ error: "Download failed" });
+        res.status(500).json({ error: "Download failed (Stream error - v3)" });
       }
     });
 
@@ -78,9 +79,9 @@ app.get("/api/download", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("[Exception]", err);
+    console.error("[Fatal Exception v3]", err);
     if (!res.headersSent) {
-      res.status(500).json({ error: "Server error" });
+      res.status(500).json({ error: "Server encountered a fatal error (v3)" });
     }
   }
 });
