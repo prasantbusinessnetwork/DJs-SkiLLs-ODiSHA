@@ -21,94 +21,35 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
   const [dlState, setDlState] = useState<DownloadState>("idle");
   const apiBase = getApiBase();
 
-  // --- 1. ROBUST BLOB DOWNLOAD TRIGGER (iOS/Android/Desktop) ---
-  const handleDownload = async (e: React.MouseEvent) => {
+  // --- 1. STABLE DIRECT DOWNLOAD TRIGGER ---
+  const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!videoId || dlState === "downloading") return;
+    if (!videoId) return;
 
     setDlState("downloading");
-
-    // Explicit API endpoint from utils.ts (Works across Vercel/Railway)
-    // Standardized 'url' parameter as requested
+    
+    // Use the reliable hardcoded API base from config.ts
     const downloadUrl = `${apiBase}/api/download?url=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title || "audio")}`;
 
     try {
-      console.log(`[Frontend] Fetching audio from: ${downloadUrl}`);
+      console.log(`[Frontend] Triggering Stable Download: ${downloadUrl}`);
+      
+      // We use window.location.href for maximum mobile/desktop compatibility
+      // This is the most stable way to handle streaming downloads on browsers
+      window.location.href = downloadUrl;
 
-      const response = await fetch(downloadUrl, {
-        method: "GET",
-        mode: "cors", // Explicitly expect CORS
-        credentials: "omit"
-      });
-
-      if (!response.ok) {
-        // Handle explicit JSON error or HTTP error
-        const errJson = await response.json().catch(() => ({ error: "Download failed (HTTP " + response.status + ")" }));
-        throw new Error(errJson.error || "Server could not process your download.");
-      }
-
-      // Check Content-Disposition if available for filename
-      // But we fallback to the title parameter passed
-
-      // Read as blob for local saving (Correct approach for mobile Safari/Android Chrome)
-      const blob = await response.blob();
-
-      if (blob.size < 50000) { // Small blobs often mean a server-side error was returned as text
-        const text = await blob.text();
-        if (text.includes("error") || text.includes("blocked")) {
-          throw new Error("Download interrupted or blocked by YouTube. Please retry.");
-        }
-        if (blob.size < 1000) {
-          throw new Error("Downloaded file is too small. Please try a different video.");
-        }
-      }
-
-      const url = window.URL.createObjectURL(blob);
-      const anchorNode = document.createElement("a");
-      anchorNode.style.display = "none";
-      anchorNode.href = url;
-
-      // Sanitized filename for mobile/PC
-      const safeTitle = (title || "audio").replace(/[^\w\s-]/g, "").trim() || "download";
-      const fileName = `${safeTitle}.mp3`;
-      anchorNode.download = fileName;
-
-      document.body.appendChild(anchorNode);
-      anchorNode.click();
-
-      // Wait a moment before cleanup to ensure trigger starts
+      // Reset state after a delay as we can't detect when the stream starts
       setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(anchorNode);
-      }, 1000);
-
-      setDlState("success");
-      toast.success("Download started!");
-      setTimeout(() => setDlState("idle"), 5000);
+        setDlState("success");
+        toast.success("Download starting...");
+        setTimeout(() => setDlState("idle"), 5000);
+      }, 2000);
 
     } catch (error: any) {
-      console.warn("[Frontend] Primary download method failed, attempting Direct Fallback...", error.message);
-      
-      // FALLBACK: Direct Link (Bypasses Blob limitations)
-      try {
-        setDlState("downloading");
-        toast.info("Retrying with mobile-friendly method...");
-        
-        // This triggers a native browser download/navigation
-        // Most mobile browsers handle this much better than Blobs
-        window.location.href = downloadUrl;
-        
-        // We set to success because the browser has took over the job
-        setTimeout(() => {
-           setDlState("success");
-           setTimeout(() => setDlState("idle"), 5000);
-        }, 2000);
-      } catch (fallbackErr) {
-        console.error("[Frontend Error]", fallbackErr);
-        setDlState("error");
-        toast.error("Download failed. YouTube might be blocking the request.");
-        setTimeout(() => setDlState("idle"), 6000);
-      }
+      console.error("[Frontend Error]", error);
+      setDlState("error");
+      toast.error("Could not start download.");
+      setTimeout(() => setDlState("idle"), 6000);
     }
   };
 

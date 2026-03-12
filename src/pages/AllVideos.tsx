@@ -27,75 +27,31 @@ const VideoItem = ({ video }: VideoItemProps) => {
     return (name || "download").replace(/[^\w\s-]/gi, '').trim() || "download";
   };
 
-  const handleDownload = async () => {
-    if (dlState === "preparing") return;
+  const handleDownload = () => {
+    if (!video.videoId) return;
 
     setDlState("preparing");
 
+    // Use the reliable hardcoded API base
     const downloadUrl = `${apiBase}/api/download?url=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
 
     try {
-      console.log(`[Frontend] Fetching audio from: ${downloadUrl}`);
-      const response = await fetch(downloadUrl, {
-        method: "GET",
-        mode: "cors",
-        credentials: "omit"
-      });
-
-      if (!response.ok) {
-        const errJson = await response.json().catch(() => ({ error: "Server could not process your download." }));
-        throw new Error(errJson.error || "Download fail (HTTP " + response.status + ")");
-      }
-
-      const blob = await response.blob();
-
-      if (blob.size < 50000) {
-        const text = await blob.text();
-        if (text.includes("error") || text.includes("blocked")) {
-          throw new Error("Download interrupted or blocked by YouTube. Please retry.");
-        }
-        throw new Error("Downloaded file is too small.");
-      }
-
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.style.display = "none";
-      a.href = url;
-
-      const safeTitle = (video.title || "audio").replace(/[^\w\s-]/g, "").trim() || "download";
-      a.download = `${safeTitle}.mp3`;
-
-      document.body.appendChild(a);
-      a.click();
+      console.log(`[Frontend] Triggering Stable Download: ${downloadUrl}`);
+      
+      // Use direct browser location for best stability
+      window.location.href = downloadUrl;
+      toast.success("Download starting...");
 
       setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }, 1000);
+        setDlState("ready");
+        setTimeout(() => setDlState("idle"), 5000);
+      }, 2000);
 
-      setDlState("ready");
-      toast.success("Download started!");
-      setTimeout(() => setDlState("idle"), 5000);
-    } catch (err: any) {
-      console.warn("Primary download failed, attempting Direct Fallback:", err.message);
-      
-      try {
-        setDlState("preparing");
-        toast.info("Retrying with direct method...");
-        
-        // FALLBACK: Direct navigation/download trigger
-        window.location.href = downloadUrl;
-        
-        setTimeout(() => {
-          setDlState("ready");
-          setTimeout(() => setDlState("idle"), 5000);
-        }, 2000);
-      } catch (fallbackErr) {
-        console.error("All download methods failed:", fallbackErr);
-        setDlState("failed");
-        toast.error("Download failed. Please try again later.");
-        setTimeout(() => setDlState("idle"), 4000);
-      }
+    } catch (err) {
+      console.error("All download methods failed:", err);
+      setDlState("failed");
+      toast.error("Download failed. Please try again later.");
+      setTimeout(() => setDlState("idle"), 4000);
     }
   };
 
