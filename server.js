@@ -13,7 +13,7 @@ app.use(express.json());
 
 // --- 2. HEALTH ENDPOINT ---
 app.get("/api/health", (req, res) => {
-  res.json({ status: "server running" });
+  res.json({ status: "server running v5" });
 });
 
 // --- 3. DOWNLOAD ENDPOINT ---
