@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "dev": "node server.mjs"
+    "dev": "node server.mjs",
+    "build": "echo 'No build step required'"
   },
   "dependencies": {
     "ioredis": "^5.3.2",
