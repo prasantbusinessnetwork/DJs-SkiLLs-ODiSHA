@@ -1,30 +1,36 @@
-FROM node:18-bullseye
+FROM node:18-bullseye-slim
 
-# Install system deps
+# ── System dependencies ──────────────────────────────────────────────────────
+# ffmpeg: audio encoding
+# python3 + pip: needed to install yt-dlp
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      python3 python3-pip ffmpeg curl ca-certificates build-essential && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+      ffmpeg \
+      python3 \
+      python3-pip \
+      ca-certificates \
+      curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install yt-dlp (linux) system-wide
-RUN python3 -m pip install --upgrade pip && \
-    python3 -m pip install --upgrade "yt-dlp[default]"
+# ── yt-dlp: install latest stable release ────────────────────────────────────
+# --break-system-packages is required on Debian 12+ / newer pip
+RUN pip3 install --no-cache-dir --break-system-packages yt-dlp
 
+# ── Verify tools are available ────────────────────────────────────────────────
+RUN yt-dlp --version && ffmpeg -version | head -1
+
+# ── App ───────────────────────────────────────────────────────────────────────
 WORKDIR /app
 
-# Copy package files & install node deps
-COPY backend/package*.json ./
-RUN npm install --production
+COPY package*.json ./
+RUN npm install --production --no-optional
 
-# Copy source
-COPY backend/ ./
-
-# Ensure server is executable
-RUN chmod +x server.mjs || true
+COPY . .
 
 ENV NODE_ENV=production
-ENV PORT=${PORT:-3000}
 
+# Railway sets PORT dynamically — we must not hardcode it
 EXPOSE 3000
 
 CMD ["node", "server.mjs"]

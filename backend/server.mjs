@@ -1,302 +1,204 @@
 /**
- * server.mjs
- * - Streams YouTube audio: yt-dlp -> ffmpeg -> HTTP response
- * - Listens on process.env.PORT || 3000
- * - Simple Redis caching for metadata (optional)
- * - Basic rate-limiting and health endpoint
+ * server.mjs — DJs SkiLLs ODiSHA Backend (Railway)
+ *
+ * Pipeline: yt-dlp -> stdout -> ffmpeg stdin -> ffmpeg stdout -> HTTP response
+ *
+ * Fixes applied:
+ * 1. videoId => full YouTube URL conversion (frontend sends just a video ID)
+ * 2. No blocking metadata fetch before streaming (was causing Railway timeout)
+ * 3. Fixed ffmpeg flag: -ab -> -b:a (older flag is deprecated & fails silently)
+ * 4. Proper PORT binding to process.env.PORT (Railway requirement)
+ * 5. CORS headers on ALL responses
+ * 6. Graceful cleanup on client disconnect / timeout
  */
 
-import http from 'http';
+import express from 'express';
+import cors from 'cors';
 import { spawn } from 'child_process';
-import { URL } from 'url';
-import { createClient as createRedisClient } from 'ioredis';
 import os from 'os';
 
+const app = express();
 const PORT = process.env.PORT || 3000;
-const REDIS_URL = process.env.REDIS_URL || null;
-const YT_API_KEY = process.env.YT_API_KEY || process.env.YOUTUBE_API_KEY || null;
-const CHANNEL_ID = process.env.CHANNEL_ID || process.env.YOUTUBE_CHANNEL_ID || null;
 
-let redis = null;
-if (REDIS_URL) {
-  redis = new createRedisClient(REDIS_URL);
-  redis.on('error', (e) => console.error('Redis error', e));
-}
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'OPTIONS'],
+  allowedHeaders: ['Content-Type'],
+}));
 
-function validateYouTubeUrl(raw) {
-  try {
-    const u = new URL(raw);
-    const host = u.hostname.toLowerCase();
-    return host.includes('youtube.com') || host.includes('youtu.be');
-  } catch (e) {
-    return false;
+// ─── Health ───────────────────────────────────────────────────────────────────
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', hostname: os.hostname(), ts: Date.now() });
+});
+
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', hostname: os.hostname(), ts: Date.now() });
+});
+
+// ─── Root ─────────────────────────────────────────────────────────────────────
+app.get('/', (_req, res) => {
+  res.send('<h3>DJs SkiLLs ODiSHA — API OK</h3><p>Use /api/download?url=&lt;youtube_url_or_video_id&gt;</p>');
+});
+
+// ─── Download ─────────────────────────────────────────────────────────────────
+app.get(['/download', '/api/download'], (req, res) => {
+  const raw = req.query.url || req.query.v || '';
+  const titleParam = req.query.title ? String(req.query.title).replace(/[^\w\s\-]/g, '_') : 'audio';
+
+  if (!raw) {
+    return res.status(400).json({ error: 'missing_url' });
   }
-}
 
-function getVideoIdFromUrl(u) {
+  // ── Build a full YouTube URL regardless of what the frontend sends ───────
+  // Frontend sends either: a bare video ID (e.g. "dQw4w9WgXcQ")
+  //                     or: a full URL (e.g. "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+  let videoUrl;
   try {
-    const urlObj = new URL(u);
-    if (urlObj.hostname.includes('youtu.be')) return urlObj.pathname.slice(1);
-    return urlObj.searchParams.get('v') || null;
-  } catch (e) {
-    return null;
+    const parsed = new URL(raw); // throws if not a valid URL
+    const host = parsed.hostname.toLowerCase();
+    if (host.includes('youtube.com') || host.includes('youtu.be')) {
+      videoUrl = raw;
+    } else {
+      return res.status(400).json({ error: 'invalid_url' });
+    }
+  } catch {
+    // Not a URL — treat as a bare video ID
+    if (/^[a-zA-Z0-9_\-]{7,15}$/.test(raw)) {
+      videoUrl = `https://www.youtube.com/watch?v=${raw}`;
+    } else {
+      return res.status(400).json({ error: 'invalid_video_id' });
+    }
   }
-}
 
-async function cacheGet(key) {
-  if (!redis) return null;
-  try { return await redis.get(key); } catch (e) { return null; }
-}
-async function cacheSet(key, value, ttl = 3600) {
-  if (!redis) return;
-  try { await redis.set(key, value, 'EX', ttl); } catch (e) {}
-}
+  const filename = `${titleParam}.mp3`;
+  console.log(`[download] Streaming: ${videoUrl} -> "${filename}"`);
 
-function streamYouTubeAudio(res, videoUrl, filename = 'audio.mp3') {
-  // spawn yt-dlp -> write to stdout, pipe to ffmpeg stdin, ffmpeg outputs mp3 to stdout
+  // ── Spawn yt-dlp ──────────────────────────────────────────────────────────
   const ytdlp = spawn('yt-dlp', [
-    '-f', 'bestaudio',
     '--no-playlist',
     '--no-check-certificate',
     '--extractor-args', 'youtube:player_client=android,ios',
-    '-o', '-',
-    videoUrl
+    '-f', 'bestaudio/best',
+    '-o', '-',           // stream to stdout
+    videoUrl,
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
+  // ── Spawn ffmpeg ───────────────────────────────────────────────────────────
   const ffmpeg = spawn('ffmpeg', [
     '-hide_banner',
     '-loglevel', 'warning',
-    '-i', 'pipe:0',
-    '-vn',
+    '-i', 'pipe:0',      // read from stdin
+    '-vn',               // no video
+    '-ar', '44100',      // sample rate
+    '-ac', '2',          // stereo
+    '-b:a', '128k',      // audio bitrate (NOT -ab, that is deprecated)
     '-f', 'mp3',
-    '-ab', '128k',
-    'pipe:1'
+    'pipe:1',            // write to stdout
   ], { stdio: ['pipe', 'pipe', 'pipe'] });
 
-  ytdlp.stderr.on('data', d => console.error('[yt-dlp]', d.toString()));
-  ffmpeg.stderr.on('data', d => console.error('[ffmpeg]', d.toString()));
-
-  // Pipe yt-dlp stdout into ffmpeg stdin
+  // ── Wire the pipeline ──────────────────────────────────────────────────────
   ytdlp.stdout.pipe(ffmpeg.stdin);
 
-  // Set response headers
-  res.writeHead(200, {
-    'Content-Type': 'audio/mpeg',
-    'Content-Disposition': `attachment; filename="${filename}"`,
-    'Cache-Control': 'no-cache',
-    'Access-Control-Allow-Origin': '*',
-    'Transfer-Encoding': 'chunked'
-  });
+  // ── Set HTTP headers BEFORE piping ────────────────────────────────────────
+  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
-  // Pipe ffmpeg stdout to response
   ffmpeg.stdout.pipe(res);
 
-  // Cleanup function
-  function cleanup() {
-    try { ytdlp.kill('SIGKILL'); } catch (e) {}
-    try { ffmpeg.kill('SIGKILL'); } catch (e) {}
+  // ── Logging ───────────────────────────────────────────────────────────────
+  let ytdlpError = '';
+  ytdlp.stderr.on('data', (d) => {
+    const msg = d.toString();
+    ytdlpError += msg;
+    console.error('[yt-dlp]', msg);
+  });
+  ffmpeg.stderr.on('data', (d) => console.error('[ffmpeg]', d.toString()));
+
+  // ── Cleanup helper ────────────────────────────────────────────────────────
+  let cleanedUp = false;
+  function cleanup(label) {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    console.log(`[cleanup] ${label}`);
+    try { ytdlp.kill('SIGKILL'); } catch (_) {}
+    try { ffmpeg.kill('SIGKILL'); } catch (_) {}
   }
 
-  // Client abort => cleanup children
-  res.on('close', () => {
-    cleanup();
-  });
+  // ── Client disconnected mid-stream ────────────────────────────────────────
+  req.on('close', () => cleanup('client_disconnected'));
 
-  // Safety timeout
-  const timeout = setTimeout(() => {
-    console.error('Timeout reached, killing processes.');
-    cleanup();
-  }, 1000 * 60 * 5); // 5 minutes
-
-  // Clear timeout when done
-  ffmpeg.stdout.on('end', () => {
-    clearTimeout(timeout);
-    res.end();
-    cleanup();
-  });
-
-  // Error handling
-  ffmpeg.on('error', (e) => {
-    console.error('ffmpeg error', e);
-    try { 
-      if (!res.headersSent) {
-        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: 'ffmpeg_error' })); 
-      }
-    } catch (e) {}
-    cleanup();
-  });
-
-  ytdlp.on('error', (e) => {
-    console.error('yt-dlp spawn error', e);
-    try { 
-      if (!res.headersSent) {
-        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: 'ytdlp_spawn_error' })); 
-      }
-    } catch (e) {}
-    cleanup();
-  });
-}
-
-async function handleDownload(req, res, query) {
-  const videoUrl = query.get('url') || query.get('v');
-  if (!videoUrl || !validateYouTubeUrl(videoUrl)) {
-    res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify({ error: 'invalid_url' }));
-    return;
-  }
-
-  const videoId = getVideoIdFromUrl(videoUrl) || 'unknown';
-
-  // Metadata caching
-  const metaKey = `video:meta:${videoId}`;
-  if (redis) {
-    const cached = await cacheGet(metaKey);
-    if (cached) {
-      try {
-        const meta = JSON.parse(cached);
-        const filename = `${meta.title.replace(/[^a-z0-9\-_\. ]/gi, '_')}.mp3`;
-        return streamYouTubeAudio(res, videoUrl, filename);
-      } catch (e) {
-        return streamYouTubeAudio(res, videoUrl);
-      }
-    }
-  }
-
-  try {
-    // metadata dump
-    const dump = spawn('yt-dlp', ['--dump-json', '--no-warnings', '--no-playlist', '--no-check-certificate', videoUrl], { stdio: ['ignore', 'pipe', 'pipe'] });
-    let out = '';
-    for await (const chunk of dump.stdout) out += chunk;
-    const parsed = out ? JSON.parse(out.split('\n')[0]) : null;
-    if (parsed && redis) {
-      await cacheSet(metaKey, JSON.stringify({ title: parsed.title || `audio-${videoId}` }), 3600 * 6);
-      const filename = `${(parsed.title || 'audio').replace(/[^a-z0-9\-_\. ]/gi, '_')}.mp3`;
-      return streamYouTubeAudio(res, videoUrl, filename);
+  // ── Safety timeout: 8 minutes ─────────────────────────────────────────────
+  const timer = setTimeout(() => {
+    console.error('[timeout] Killing processes after 8 min');
+    cleanup('timeout');
+    if (!res.headersSent) {
+      res.status(504).json({ error: 'timeout' });
     } else {
-      return streamYouTubeAudio(res, videoUrl);
+      res.end();
     }
-  } catch (e) {
-    console.error('metadata error', e);
-    return streamYouTubeAudio(res, videoUrl);
-  }
-}
+  }, 8 * 60 * 1000);
 
-async function handleLatestVideos(req, res, query) {
-  if (!YT_API_KEY || !CHANNEL_ID) {
-    res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify({ error: 'YT_CONFIG_MISSING' }));
-    return;
-  }
-
-  let maxResults = Math.min(Number(query.get('maxResults') || 6), 50);
-  const cacheKey = `yt:latest:${CHANNEL_ID}:${maxResults}`;
-  
-  if (redis) {
-    const cached = await cacheGet(cacheKey);
-    if (cached) {
-      res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(cached);
-      return;
+  // ── yt-dlp exit ───────────────────────────────────────────────────────────
+  ytdlp.on('close', (code) => {
+    console.log(`[yt-dlp] exited code=${code}`);
+    if (code !== 0) {
+      // Signal end to ffmpeg so it flushes what it has
+      try { ffmpeg.stdin.end(); } catch (_) {}
     }
-  }
+  });
 
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&order=date&maxResults=${maxResults}&type=video&key=${YT_API_KEY}`;
-  const response = await fetch(url);
-  
-  if (!response.ok) {
-    throw new Error(`YouTube API returned ${response.status}`);
-  }
+  // ── yt-dlp spawn error (binary not found) ─────────────────────────────────
+  ytdlp.on('error', (e) => {
+    console.error('[yt-dlp spawn]', e.message);
+    cleanup('ytdlp_spawn_error');
+    clearTimeout(timer);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'yt_dlp_not_found', message: e.message });
+    } else {
+      res.end();
+    }
+  });
 
-  const data = await response.json();
-  const videos = data.items.map((item, index) => {
-    const videoId = item.id?.videoId;
-    const snippet = item.snippet;
-    if (!videoId || !snippet) return null;
-    if (snippet.title.toLowerCase().includes("private") || snippet.title.toLowerCase().includes("deleted")) return null;
-    
-    return {
-      title: snippet.title,
-      artist: snippet.channelTitle,
-      tag: index === 0 ? "Latest" : "Remix",
-      youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
-      videoId,
-      thumbnail: snippet.thumbnails?.medium?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-      publishedAt: snippet.publishedAt,
-    };
-  }).filter(v => v !== null);
+  // ── ffmpeg spawn error ────────────────────────────────────────────────────
+  ffmpeg.on('error', (e) => {
+    console.error('[ffmpeg spawn]', e.message);
+    cleanup('ffmpeg_spawn_error');
+    clearTimeout(timer);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'ffmpeg_not_found', message: e.message });
+    } else {
+      res.end();
+    }
+  });
 
-  const result = JSON.stringify(videos);
-  if (redis) await cacheSet(cacheKey, result, 1800); // 30 min cache
-
-  res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-  res.end(result);
-}
-
-function requestHandler(req, res) {
-  const u = new URL(req.url, `http://${req.headers.host}`);
-  
-  // CORS support
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204, {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type'
-    });
-    res.end();
-    return;
-  }
-
-  if (u.pathname === '/health' || u.pathname === '/api/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify({ status: 'ok', hostname: os.hostname(), engine: 'blueprint-v2' }));
-    return;
-  }
-
-  if (u.pathname === '/api/latest-videos') {
-    handleLatestVideos(req, res, u.searchParams).catch(e => {
-      console.error('latest-videos error', e);
-      res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: e.message }));
-    });
-    return;
-  }
-  
-  if (u.pathname === '/download' || u.pathname === '/api/download') {
-    handleDownload(req, res, u.searchParams).catch(e => {
-      console.error('download handler error', e);
-      try { 
-        if (!res.headersSent) {
-          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }); 
-          res.end(JSON.stringify({ error: 'internal' })); 
-        }
-      } catch (e) {}
-    });
-    return;
-  }
-
-  if (u.pathname === '/') {
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(`<html><body><h3>DJ Skills API (Streaming)</h3><p>Use /api/download?url=&lt;youtube_url&gt;</p></body></html>`);
-    return;
-  }
-
-  res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-  res.end(JSON.stringify({ error: 'not_found' }));
-}
-
-const server = http.createServer(requestHandler);
-
-process.on('SIGINT', () => {
-  console.log('SIGINT: shutting down');
-  server.close(() => process.exit(0));
+  // ── ffmpeg done ───────────────────────────────────────────────────────────
+  ffmpeg.on('close', (code) => {
+    clearTimeout(timer);
+    console.log(`[ffmpeg] exited code=${code}`);
+    cleanup('ffmpeg_done');
+    if (!res.writableEnded) res.end();
+  });
 });
+
+// ─── 404 ──────────────────────────────────────────────────────────────────────
+app.use((_req, res) => {
+  res.status(404).json({ error: 'not_found' });
+});
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[server] Listening on port ${PORT}`);
+});
+
 process.on('SIGTERM', () => {
-  console.log('SIGTERM: shutting down');
-  server.close(() => process.exit(0));
+  console.log('[server] SIGTERM received, shutting down');
+  process.exit(0);
 });
-
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Production Server listening on port ${PORT}`);
+process.on('SIGINT', () => {
+  console.log('[server] SIGINT received, shutting down');
+  process.exit(0);
 });

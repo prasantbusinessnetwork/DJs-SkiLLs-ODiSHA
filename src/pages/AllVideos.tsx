@@ -1,6 +1,6 @@
 import { Loader2, Search, ArrowLeft, Download, Play, CheckCircle } from "lucide-react";
 import { useYouTubeVideos } from "@/hooks/useYouTubeVideos";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import LazyImage from "@/components/LazyImage";
 import { getApiBase } from "@/lib/utils";
@@ -16,41 +16,54 @@ interface VideoItemProps {
 const VideoItem = ({ video }: VideoItemProps) => {
   const [playing, setPlaying] = useState(false);
   const [dlState, setDlState] = useState<DownloadState>("idle");
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const apiBase = getApiBase();
 
-  const stopPolling = () => {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-  };
 
   const sanitize = (name: string) => {
     return (name || "download").replace(/[^\w\s-]/gi, '').trim() || "download";
   };
 
-  const handleDownload = () => {
-    if (!video.videoId) return;
+  const handleDownload = async () => {
+    if (!video.videoId || dlState === "preparing") return;
 
     setDlState("preparing");
 
-    // Use the reliable hardcoded API base
-    const downloadUrl = `${apiBase}/api/download?url=${encodeURIComponent(video.videoId)}&title=${encodeURIComponent(video.title)}`;
+    const apiBase = getApiBase();
+    // Always send full YouTube URL so backend has no ambiguity
+    const youtubeFullUrl = `https://www.youtube.com/watch?v=${video.videoId}`;
+    const downloadEndpoint = `${apiBase}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(video.title)}`;
 
     try {
-      console.log(`[Frontend] Triggering Stable Download: ${downloadUrl}`);
-      
-      // Use direct browser location for best stability
-      window.location.href = downloadUrl;
-      toast.success("Download starting...");
+      console.log(`[AllVideos] Download → ${downloadEndpoint}`);
+
+      const res = await fetch(downloadEndpoint);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = blobUrl;
+      a.download = `${sanitize(video.title)}.mp3`;
+      document.body.appendChild(a);
+      a.click();
 
       setTimeout(() => {
-        setDlState("ready");
-        setTimeout(() => setDlState("idle"), 5000);
-      }, 2000);
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(blobUrl);
+      }, 1000);
 
-    } catch (err) {
-      console.error("All download methods failed:", err);
+      setDlState("ready");
+      toast.success("Download complete!");
+      setTimeout(() => setDlState("idle"), 5000);
+
+    } catch (err: any) {
+      console.error("[AllVideos] Download failed:", err);
       setDlState("failed");
-      toast.error("Download failed. Please try again later.");
+      toast.error(`Download failed: ${err.message || "Please try again."}`);
       setTimeout(() => setDlState("idle"), 4000);
     }
   };

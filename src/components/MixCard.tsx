@@ -19,36 +19,52 @@ type DownloadState = "idle" | "downloading" | "success" | "error";
 const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: MixCardProps) => {
   const [playing, setPlaying] = useState(false);
   const [dlState, setDlState] = useState<DownloadState>("idle");
-  const apiBase = getApiBase();
 
-  // --- 1. STABLE DIRECT DOWNLOAD TRIGGER ---
-  const handleDownload = (e: React.MouseEvent) => {
+  // ── Download handler ─────────────────────────────────────────────────────
+  const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!videoId) return;
+    if (!videoId || dlState === "downloading") return;
 
     setDlState("downloading");
-    
-    // Use the reliable hardcoded API base from config.ts
-    const downloadUrl = `${apiBase}/api/download?url=${encodeURIComponent(videoId)}&title=${encodeURIComponent(title || "audio")}`;
+
+    const apiBase = getApiBase();
+    // Always send full YouTube URL so backend has no ambiguity
+    const youtubeFullUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    const downloadEndpoint = `${apiBase}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(title || "audio")}`;
 
     try {
-      console.log(`[Frontend] Triggering Stable Download: ${downloadUrl}`);
-      
-      // We use window.location.href for maximum mobile/desktop compatibility
-      // This is the most stable way to handle streaming downloads on browsers
-      window.location.href = downloadUrl;
+      console.log(`[MixCard] Download → ${downloadEndpoint}`);
 
-      // Reset state after a delay as we can't detect when the stream starts
+      const res = await fetch(downloadEndpoint);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = blobUrl;
+      a.download = `${(title || "audio").replace(/[^\w\s-]/g, "_")}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+
+      // Cleanup
       setTimeout(() => {
-        setDlState("success");
-        toast.success("Download starting...");
-        setTimeout(() => setDlState("idle"), 5000);
-      }, 2000);
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(blobUrl);
+      }, 1000);
+
+      setDlState("success");
+      toast.success("Download complete!");
+      setTimeout(() => setDlState("idle"), 5000);
 
     } catch (error: any) {
-      console.error("[Frontend Error]", error);
+      console.error("[MixCard] Download failed:", error);
       setDlState("error");
-      toast.error("Could not start download.");
+      toast.error(`Download failed: ${error.message || "Please try again."}`);
       setTimeout(() => setDlState("idle"), 6000);
     }
   };
