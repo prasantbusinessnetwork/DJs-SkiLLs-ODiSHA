@@ -11,10 +11,27 @@ export interface YouTubeVideo {
   publishedAt: string;
 }
 
-export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]> {
+export async function fetchLatestVideos(maxResults = 5): Promise<YouTubeVideo[]> {
   const apiBase = getApiBase();
   
-  // 1. Fetch from Unified Backend (Railway)
+  try {
+    const url = new URL(`${apiBase}/api/latest`);
+    const res = await fetchWithRetry(url.toString(), {}, 2, 8000);
+    
+    if (res.ok) {
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    }
+  } catch (e) {
+    console.error("Latest videos fetch failed:", e);
+  }
+
+  return [];
+}
+
+export async function fetchAllVideos(maxResults = 50): Promise<YouTubeVideo[]> {
+  const apiBase = getApiBase();
+  
   try {
     const url = new URL(`${apiBase}/api/videos`);
     url.searchParams.set("maxResults", String(maxResults));
@@ -22,14 +39,11 @@ export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]
     
     if (res.ok) {
       const data = await res.json();
-      if (data && Array.isArray(data.videos)) return data.videos;
-      if (Array.isArray(data)) return data; 
+      return Array.isArray(data) ? data : [];
     }
   } catch (e) {
-    console.error("Backend fetch failed:", e);
+    console.error("All videos fetch failed:", e);
   }
 
-  // Strictly avoiding relative paths per Step 10.
-  // We rely entirely on the Railway backend.
   return [];
 }

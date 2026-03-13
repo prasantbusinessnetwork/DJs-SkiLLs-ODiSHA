@@ -64,7 +64,7 @@ app.get('/api/health', (_req, res) => {
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {
-  res.send('Backend Running');
+  res.send('Backend running');
 });
 
 // ─── Videos (Dynamic YouTube API Fetch) ───────────────────────────────────────
@@ -76,8 +76,59 @@ const fallbackVideos = [
   { title: "Illuminati (Remix)", artist: "Visual DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=hK651bev0uI", videoId: "hK651bev0uI", thumbnail: "https://img.youtube.com/vi/hK651bev0uI/mqdefault.jpg" },
 ];
 
-app.get(['/api/videos', '/api/latest-videos'], async (req, res) => {
-  console.log(`[videos] Fetching videos for ${req.ip}`);
+app.get('/api/latest', async (req, res) => {
+  console.log(`[latest] Fetching newest 5 videos for ${req.ip}`);
+  
+  const API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || process.env.YOUTUBE_API_KEY;
+  const CHANNEL_ID = process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || process.env.YOUTUBE_CHANNEL_ID;
+
+  if (!API_KEY || !CHANNEL_ID) {
+    console.warn("[latest] Missing YouTube API Key or Channel ID. Sending fallback videos.");
+    return res.json(fallbackVideos.slice(0, 5));
+  }
+
+  try {
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&order=date&maxResults=5&type=video&key=${API_KEY}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      console.error("[latest] YouTube API error:", await response.text());
+      return res.json(fallbackVideos.slice(0, 5));
+    }
+
+    const data = await response.json();
+    
+    const videos = data.items
+      .map((item, index) => {
+        const videoId = item.id?.videoId;
+        const snippet = item.snippet;
+        if (!videoId || !snippet) return null;
+
+        const title = snippet.title || "";
+        const thumbnails = snippet.thumbnails || {};
+        const thumbnailUrl = thumbnails.medium?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+
+        return {
+          title,
+          artist: snippet.channelTitle,
+          tag: index === 0 ? "Latest" : "Remix",
+          youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+          videoId,
+          thumbnail: thumbnailUrl,
+          publishedAt: snippet.publishedAt,
+        };
+      })
+      .filter((v) => v !== null);
+
+    res.status(200).json(videos);
+  } catch (error) {
+    console.error("[latest] Fetch Exception:", error);
+    res.json(fallbackVideos.slice(0, 5));
+  }
+});
+
+app.get('/api/videos', async (req, res) => {
+  console.log(`[videos] Fetching all videos for ${req.ip}`);
   
   const API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || process.env.YOUTUBE_API_KEY;
   const CHANNEL_ID = process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || process.env.YOUTUBE_CHANNEL_ID;
@@ -106,16 +157,8 @@ app.get(['/api/videos', '/api/latest-videos'], async (req, res) => {
         if (!videoId || !snippet) return null;
 
         const title = snippet.title || "";
-        const normalizedTitle = title.toLowerCase();
-        if (normalizedTitle.includes("private video") || normalizedTitle.includes("deleted video")) {
-          return null;
-        }
-
         const thumbnails = snippet.thumbnails || {};
-        const thumbnailUrl =
-          thumbnails.medium?.url ||
-          thumbnails.default?.url ||
-          `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+        const thumbnailUrl = thumbnails.medium?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
 
         return {
           title,
@@ -142,57 +185,27 @@ app.get('/api/stream', (req, res) => {
   // ... (omitted for brevity in this chunk, I'll keep it as /api/stream)
 });
 
-// ─── Direct MP3 Download (The User's Requested Primary Route) ─────────────────
-app.get(['/api/download', '/api/download-mp3'], async (req, res) => {
-  const raw = req.query.url || req.query.v || '';
-  
-  // Stricter sanitization for the final filename (sent in headers)
-  // Remove special characters, spaces to underscores, truncate to 60 chars
-  const titleParam = req.query.title 
-    ? String(req.query.title)
-        .replace(/[^\w\s\-]/g, '')
-        .trim()
-        .replace(/\s+/g, '_')
-        .substring(0, 60)
-    : 'audio_' + Date.now();
+// ─── MP3 Download (The User's Requested Primary Route) ────────────────────────
+app.get('/api/download', async (req, res) => {
+  const videoUrl = req.query.url;
 
-  if (!raw) {
+  if (!videoUrl) {
     return res.status(400).json({ error: 'missing_url' });
   }
 
-  let videoUrl;
-  try {
-    const parsed = new URL(raw);
-    const host = parsed.hostname.toLowerCase();
-    if (host.includes('youtube.com') || host.includes('youtu.be')) {
-      videoUrl = raw;
-    } else {
-      return res.status(400).json({ error: 'invalid_url' });
-    }
-  } catch {
-    if (/^[a-zA-Z0-9_\-]{7,15}$/.test(raw)) {
-      videoUrl = `https://www.youtube.com/watch?v=${raw}`;
-    } else {
-      return res.status(400).json({ error: 'invalid_video_id' });
-    }
-  }
-
   const fileId = Date.now() + '_' + Math.floor(Math.random() * 1000);
-  // Use a very simple temp filename to avoid any fs-level corruption or path issues
   const tempFile = `${fileId}.mp3`;
   const outputPath = path.join(downloadsDir, tempFile);
   
-  console.log(`[download-mp3] Converting: ${videoUrl}`);
+  console.log(`[download] Converting: ${videoUrl}`);
 
   try {
     const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --embed-metadata -o "${outputPath}" "${videoUrl}"`;
-    console.log(`[download-mp3] Executing command: ${command}`);
+    console.log(`[download] Executing command: ${command}`);
 
     exec(command, (error, stdout, stderr) => {
-      console.log(stdout);
-      console.error(stderr);
-
       if (error) {
+        console.error(`[download] yt-dlp failed: ${stderr}`);
         if (!res.headersSent) {
           return res.status(500).json({
             error: 'conversion_failed',
@@ -202,41 +215,31 @@ app.get(['/api/download', '/api/download-mp3'], async (req, res) => {
         return;
       }
 
-      console.log(`[download-mp3] Conversion complete. Checking for file: ${tempFile}`);
+      console.log(`[download] Conversion complete. Checking for file: ${tempFile}`);
 
       try {
-        const fullFilePath = outputPath;
-        const finalFilename = `${titleParam || 'audio'}.mp3`;
-        
-        if (!fs.existsSync(fullFilePath)) {
+        if (!fs.existsSync(outputPath)) {
           if (!res.headersSent) {
             return res.status(500).json({ error: 'conversion_failed', message: 'File not found after download' });
           }
           return;
         }
 
-        const stats = fs.statSync(fullFilePath);
+        const stats = fs.statSync(outputPath);
 
-        if (stats.size < 1024) {
-          if (!res.headersSent) {
-            return res.status(500).json({ error: 'conversion_failed', message: 'Generated file is too small' });
-          }
-          return;
-        }
-
-        res.setHeader('Content-Length', stats.size);
+        // Set headers for attachment download
         res.setHeader('Content-Type', 'audio/mpeg');
-        res.setHeader('Content-Disposition', `attachment; filename="${finalFilename}"`);
-        res.setHeader('Accept-Ranges', 'bytes');
+        res.setHeader('Content-Disposition', 'attachment; filename="audio.mp3"');
+        res.setHeader('Content-Length', stats.size);
 
-        console.log(`[download-mp3] Streaming file: ${tempFile} (${stats.size} bytes)`);
+        console.log(`[download] Streaming file: ${tempFile} (${stats.size} bytes)`);
 
-        const stream = fs.createReadStream(fullFilePath);
+        const stream = fs.createReadStream(outputPath);
         stream.pipe(res);
 
         stream.on('end', () => {
           try {
-            fs.unlinkSync(fullFilePath);
+            fs.unlinkSync(outputPath);
             console.log(`[cleanup] Deleted: ${tempFile}`);
           } catch (e) {
             console.error('[cleanup] Failed:', tempFile, e);
@@ -258,7 +261,7 @@ app.get(['/api/download', '/api/download-mp3'], async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[download-mp3] Execution Wrapper Failed:', error);
+    console.error('[download] Execution Wrapper Failed:', error);
     if (!res.headersSent) {
       res.status(500).json({ error: 'execution_failed', message: error.message });
     }
