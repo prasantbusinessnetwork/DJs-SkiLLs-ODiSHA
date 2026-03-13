@@ -203,7 +203,16 @@ app.get(['/download', '/api/download'], (req, res) => {
 // ─── Direct MP3 Download (High Compatibility) ──────────────────────────────
 app.get('/api/download-mp3', async (req, res) => {
   const raw = req.query.url || req.query.v || '';
-  const titleParam = req.query.title ? String(req.query.title).replace(/[^\w\s\-]/g, '_') : 'audio_' + Date.now();
+  
+  // Stricter sanitization for the final filename (sent in headers)
+  // Remove special characters, spaces to underscores, truncate to 60 chars
+  const titleParam = req.query.title 
+    ? String(req.query.title)
+        .replace(/[^\w\s\-]/g, '')
+        .trim()
+        .replace(/\s+/g, '_')
+        .substring(0, 60)
+    : 'audio_' + Date.now();
 
   if (!raw) {
     return res.status(400).json({ error: 'missing_url' });
@@ -227,14 +236,17 @@ app.get('/api/download-mp3', async (req, res) => {
   }
 
   const fileId = Date.now() + '_' + Math.floor(Math.random() * 1000);
-  const outputPath = path.join(downloadsDir, `${fileId}_%(title)s.%(ext)s`);
+  // Use a very simple temp filename to avoid any fs-level corruption or path issues
+  const tempFile = `${fileId}.mp3`;
+  const outputPath = path.join(downloadsDir, tempFile);
   
   console.log(`[download-mp3] Converting: ${videoUrl}`);
 
   try {
     const args = [
       '-x', '--audio-format', 'mp3', '--audio-quality', '0',
-      '--embed-metadata', '--embed-thumbnail',
+      '--embed-metadata', // Safe to keep metadata
+      // REMOVED --embed-thumbnail as it can corrupt MP3 headers on some players/OSs
       '--no-playlist', '--no-check-certificate',
       '--extractor-args', 'youtube:player_client=android,ios',
       '-o', outputPath,
@@ -259,17 +271,19 @@ app.get('/api/download-mp3', async (req, res) => {
       ytdlpProc.on('error', reject);
     });
 
-    // Find the actual file
-    const files = fs.readdirSync(downloadsDir);
-    const downloadedFile = files.find(f => f.startsWith(fileId) && f.endsWith('.mp3'));
-
-    if (!downloadedFile) {
-      throw new Error('File not found after conversion');
+    const fullFilePath = outputPath;
+    const finalFilename = `${titleParam || 'audio'}.mp3`;
+    
+    if (!fs.existsSync(fullFilePath)) {
+      throw new Error(`Conversion failed: ${tempFile} not found`);
     }
 
-    const fullFilePath = path.join(downloadsDir, downloadedFile);
-    const finalFilename = `${titleParam}.mp3`;
     const stats = fs.statSync(fullFilePath);
+
+    // Basic integrity check: an MP3 should be at least a few KB
+    if (stats.size < 1024) {
+      throw new Error(`Generated file is too small (${stats.size} bytes). Likely corrupt.`);
+    }
 
     // Set headers for explicit streaming
     res.setHeader('Content-Length', stats.size);
