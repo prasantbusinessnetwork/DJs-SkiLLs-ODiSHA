@@ -128,53 +128,56 @@ app.get('/api/latest', async (req, res) => {
 });
 
 app.get('/api/videos', async (req, res) => {
-  console.log(`[videos] Fetching all videos for ${req.ip}`);
-  
   const API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || process.env.YOUTUBE_API_KEY;
   const CHANNEL_ID = process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || process.env.YOUTUBE_CHANNEL_ID;
-  const maxResults = Math.min(Number(req.query.maxResults) || 500, 500);
+  const targetCount = Math.min(Number(req.query.maxResults) || 500, 500);
 
   if (!API_KEY || !CHANNEL_ID) {
-    console.warn("[videos] Missing YouTube API Key or Channel ID. Sending fallback videos.");
     return res.json(fallbackVideos);
   }
 
   try {
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&order=date&maxResults=${maxResults}&type=video&key=${API_KEY}`;
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      console.error("[videos] YouTube API error:", await response.text());
-      return res.json(fallbackVideos);
-    }
-
-    const data = await response.json();
+    let allVideos = [];
+    let nextPageToken = "";
     
-    const videos = data.items
-      .map((item, index) => {
+    // The YouTube Search API has a max of 50 results per call.
+    // We loop to fetch until we hit the targetCount or run out of pages.
+    while (allVideos.length < targetCount) {
+      const remaining = targetCount - allVideos.length;
+      const currentMax = Math.min(remaining, 50);
+      
+      let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&order=date&maxResults=${currentMax}&type=video&key=${API_KEY}`;
+      if (nextPageToken) url += `&pageToken=${nextPageToken}`;
+
+      const response = await fetch(url);
+      if (!response.ok) break;
+
+      const data = await response.json();
+      if (!data.items || data.items.length === 0) break;
+
+      const batch = data.items.map((item) => {
         const videoId = item.id?.videoId;
         const snippet = item.snippet;
-        if (!videoId || !snippet) return null;
-
-        const title = snippet.title || "";
-        const thumbnails = snippet.thumbnails || {};
-        const thumbnailUrl = thumbnails.medium?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
-
         return {
-          title,
+          title: snippet.title,
           artist: snippet.channelTitle,
-          tag: index === 0 ? "Latest" : "Remix",
+          tag: "Mix",
           youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
           videoId,
-          thumbnail: thumbnailUrl,
+          thumbnail: snippet.thumbnails?.medium?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
           publishedAt: snippet.publishedAt,
         };
-      })
-      .filter((v) => v !== null);
+      });
 
-    res.status(200).json(videos);
+      allVideos = [...allVideos, ...batch];
+      nextPageToken = data.nextPageToken;
+
+      if (!nextPageToken) break;
+    }
+
+    res.status(200).json(allVideos);
   } catch (error) {
-    console.error("[videos] Fetch Exception:", error);
+    console.error("[videos] Fetch error:", error);
     res.json(fallbackVideos);
   }
 });
