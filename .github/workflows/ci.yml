@@ -11,16 +11,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      # Build using the SAME Dockerfile path Railway uses
       - name: Build Docker image
-        run: docker build -t djs-server .
+        run: docker build -f backend/Dockerfile -t djs-server .
+
       - name: Run container
-        run: docker run -d --name djs_test -p 3000:3000 djs-server || true
+        run: docker run -d --name djs_test -p 3000:3000 -e PORT=3000 djs-server
+
       - name: Wait for startup
-        run: sleep 10
+        run: sleep 15
+
+      - name: Show container logs
+        run: docker logs djs_test
+
       - name: Healthcheck
         run: |
-          node test/healthcheck.js || (docker logs djs_test && exit 1)
+          curl -f http://localhost:3000/health || (docker logs djs_test && exit 1)
+
       - name: Stop container
+        if: always()
         run: docker stop djs_test || true

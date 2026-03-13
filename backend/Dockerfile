@@ -1,8 +1,6 @@
-FROM node:18-bullseye-slim
+FROM node:18-bullseye
 
 # ── System dependencies ──────────────────────────────────────────────────────
-# ffmpeg: audio encoding
-# python3 + pip: needed to install yt-dlp
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       ffmpeg \
@@ -13,24 +11,24 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# ── yt-dlp: install latest stable release ────────────────────────────────────
-# --break-system-packages is required on Debian 12+ / newer pip
-RUN pip3 install --no-cache-dir --break-system-packages yt-dlp
+# ── Install latest yt-dlp via pip (bullseye uses pip 20.x — no --break-system-packages needed) ──
+RUN pip3 install -U yt-dlp
 
-# ── Verify tools are available ────────────────────────────────────────────────
+# ── Verify tools ─────────────────────────────────────────────────────────────
 RUN yt-dlp --version && ffmpeg -version | head -1
 
 # ── App ───────────────────────────────────────────────────────────────────────
 WORKDIR /app
 
-COPY package*.json ./
+# Copy from repo root context (railway.json sets dockerfilePath: backend/Dockerfile)
+COPY backend/package*.json ./
 RUN npm install --production --no-optional
 
-COPY . .
+COPY backend/ ./
 
 ENV NODE_ENV=production
+ENV PORT=3000
 
-# Railway sets PORT dynamically — we must not hardcode it
 EXPOSE 3000
 
 CMD ["node", "server.mjs"]
