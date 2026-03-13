@@ -31,7 +31,7 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     const apiBase = getApiBase();
     // Always send full YouTube URL so backend has no ambiguity
     const youtubeFullUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const downloadEndpoint = `${apiBase}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(title || "audio")}`;
+    const downloadEndpoint = `${apiBase}/api/download-mp3?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(title || "audio")}`;
 
     try {
       console.log(`[MixCard] Download → ${downloadEndpoint}`);

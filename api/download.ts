@@ -12,7 +12,7 @@ export default async function handler(req: any, res: any) {
 
   // Redirect the browser to the dedicated Railway backend
   // This is a proxy to bypass Vercel's 10s execution limit
-  const targetUrl = `${apiBase}/api/download?url=${encodeURIComponent(targetId)}&title=${encodeURIComponent(title || "download")}`;
+  const targetUrl = `${apiBase}/api/download-mp3?url=${encodeURIComponent(targetId)}&title=${encodeURIComponent(title || "download")}`;
 
   console.log(`[Vercel Proxy] Redirecting ${targetId} to ${targetUrl}`);
   return res.redirect(targetUrl);

@@ -14,8 +14,20 @@
 
 import express from 'express';
 import cors from 'cors';
-import { spawn } from 'child_process';
+import { spawn, exec } from 'child_process';
 import os from 'os';
+import path from 'path';
+import fs from 'fs';
+import { promisify } from 'util';
+
+const execPromise = promisify(exec);
+const __dirname = path.dirname(new URL(import.meta.url).pathname).replace(/^\/([a-zA-Z]:)/, '$1'); // Handle Windows paths from URL
+const downloadsDir = path.join(process.cwd(), 'downloads');
+
+// Ensure downloads directory exists
+if (!fs.existsSync(downloadsDir)) {
+  fs.mkdirSync(downloadsDir, { recursive: true });
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -186,6 +198,73 @@ app.get(['/download', '/api/download'], (req, res) => {
     cleanup('ffmpeg_done');
     if (!res.writableEnded) res.end();
   });
+});
+
+// ─── Direct MP3 Download (High Compatibility) ──────────────────────────────
+app.get('/api/download-mp3', async (req, res) => {
+  const raw = req.query.url || req.query.v || '';
+  const titleParam = req.query.title ? String(req.query.title).replace(/[^\w\s\-]/g, '_') : 'audio_' + Date.now();
+
+  if (!raw) {
+    return res.status(400).json({ error: 'missing_url' });
+  }
+
+  let videoUrl;
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.toLowerCase();
+    if (host.includes('youtube.com') || host.includes('youtu.be')) {
+      videoUrl = raw;
+    } else {
+      return res.status(400).json({ error: 'invalid_url' });
+    }
+  } catch {
+    if (/^[a-zA-Z0-9_\-]{7,15}$/.test(raw)) {
+      videoUrl = `https://www.youtube.com/watch?v=${raw}`;
+    } else {
+      return res.status(400).json({ error: 'invalid_video_id' });
+    }
+  }
+
+  const fileId = Date.now() + '_' + Math.floor(Math.random() * 1000);
+  const outputPath = path.join(downloadsDir, `${fileId}_%(title)s.%(ext)s`);
+  
+  console.log(`[download-mp3] Converting: ${videoUrl}`);
+
+  try {
+    // We use yt-dlp to handle the conversion internally. This is more robust for metadata and structure.
+    const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --no-playlist --no-check-certificate --extractor-args "youtube:player_client=android,ios" -o "${outputPath}" "${videoUrl}"`;
+    
+    await execPromise(command);
+
+    // Find the actual file (yt-dlp replaces %(title)s and %(ext)s)
+    const files = fs.readdirSync(downloadsDir);
+    const downloadedFile = files.find(f => f.startsWith(fileId) && f.endsWith('.mp3'));
+
+    if (!downloadedFile) {
+      throw new Error('File not found after conversion');
+    }
+
+    const fullFilePath = path.join(downloadsDir, downloadedFile);
+    const finalFilename = `${titleParam}.mp3`;
+
+    res.download(fullFilePath, finalFilename, (err) => {
+      if (err) {
+        console.error('[res.download] Error:', err);
+      }
+      // Cleanup file after download
+      try {
+        fs.unlinkSync(fullFilePath);
+        console.log(`[cleanup] Deleted temporary file: ${downloadedFile}`);
+      } catch (unlinkErr) {
+        console.error('[cleanup] Failed to delete:', downloadedFile, unlinkErr);
+      }
+    });
+
+  } catch (error) {
+    console.error('[download-mp3] Failed:', error);
+    res.status(500).json({ error: 'conversion_failed', message: error.message });
+  }
 });
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
