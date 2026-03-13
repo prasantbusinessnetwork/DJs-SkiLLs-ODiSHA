@@ -185,90 +185,45 @@ app.get('/api/stream', (req, res) => {
   // ... (omitted for brevity in this chunk, I'll keep it as /api/stream)
 });
 
-// ─── MP3 Download (The User's Requested Primary Route) ────────────────────────
-app.get('/api/download', async (req, res) => {
-  const videoUrl = req.query.url;
-
-  if (!videoUrl) {
-    return res.status(400).json({ error: 'missing_url' });
+// ─── MP3 Download (Step 3: Specific Logic) ────────────────────────────────────
+app.get("/api/download", (req, res) => {
+  const url = req.query.url;
+  if (!url) {
+    return res.status(400).json({ error: "missing_url" });
   }
 
-  const fileId = Date.now() + '_' + Math.floor(Math.random() * 1000);
-  const tempFile = `${fileId}.mp3`;
-  const outputPath = path.join(downloadsDir, tempFile);
-  
-  console.log(`[download] Converting: ${videoUrl}`);
+  // Define a predictable file name and path for the download
+  const fileId = Date.now();
+  const filePath = path.join(downloadsDir, `download_${fileId}.mp3`);
 
-  try {
-    // 1. Updated command to bypass "bot" detection on Railway
-    // 2. Added --force-ipv4 as YouTube often blocks datacenter IPv6 ranges
-    // 3. Added multiple player_clients as fallbacks
-    const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --embed-metadata --force-ipv4 --extractor-args "youtube:player_client=ios,android,web" -o "${outputPath}" "${videoUrl}"`;
-    console.log(`[download] Executing command: ${command}`);
+  // Step 2 & 3: Standardized command
+  const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --embed-metadata -o "${filePath}" "${url}"`;
+  console.log(`[download] Executing: ${command}`);
 
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`[download] yt-dlp failed: ${stderr}`);
-        if (!res.headersSent) {
-          return res.status(500).json({
-            error: 'conversion_failed',
-            message: stderr || error.message
-          });
-        }
-        return;
-      }
-
-      console.log(`[download] Conversion complete. Checking for file: ${tempFile}`);
-
-      try {
-        if (!fs.existsSync(outputPath)) {
-          if (!res.headersSent) {
-            return res.status(500).json({ error: 'conversion_failed', message: 'File not found after download' });
-          }
-          return;
-        }
-
-        const stats = fs.statSync(outputPath);
-
-        // Set headers for attachment download
-        res.setHeader('Content-Type', 'audio/mpeg');
-        res.setHeader('Content-Disposition', 'attachment; filename="audio.mp3"');
-        res.setHeader('Content-Length', stats.size);
-
-        console.log(`[download] Streaming file: ${tempFile} (${stats.size} bytes)`);
-
-        const stream = fs.createReadStream(outputPath);
-        stream.pipe(res);
-
-        stream.on('end', () => {
-          try {
-            fs.unlinkSync(outputPath);
-            console.log(`[cleanup] Deleted: ${tempFile}`);
-          } catch (e) {
-            console.error('[cleanup] Failed:', tempFile, e);
-          }
-        });
-
-        stream.on('error', (err) => {
-          console.error('[stream] Error:', err);
-          if (!res.headersSent) {
-            res.status(500).json({ error: 'stream_failed' });
-          }
-        });
-      } catch (streamErr) {
-        console.error('[stream_setup] Failed:', streamErr);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'stream_failed', message: streamErr.message });
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('[download] Execution Wrapper Failed:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'execution_failed', message: error.message });
+  exec(command, (error) => {
+    if (error) {
+      console.error(`[download] Error: ${error.message}`);
+      return res.status(500).json({ error: "conversion_failed" });
     }
-  }
+
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Content-Disposition", "attachment; filename=\"audio.mp3\"");
+
+    if (fs.existsSync(filePath)) {
+      const stream = fs.createReadStream(filePath);
+      stream.pipe(res);
+
+      stream.on('end', () => {
+        try {
+          fs.unlinkSync(filePath);
+        } catch (e) {
+          console.error('[cleanup] Failed:', e);
+        }
+      });
+    } else {
+      res.status(500).json({ error: "file_not_found" });
+    }
+  });
 });
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────

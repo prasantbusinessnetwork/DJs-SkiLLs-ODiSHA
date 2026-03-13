@@ -1,6 +1,8 @@
 import { getApiBase } from "./utils";
 import { fetchWithRetry } from "../utils/fetchWithRetry";
 
+const API = import.meta.env.VITE_API_URL || getApiBase();
+
 export interface YouTubeVideo {
   title: string;
   artist: string;
