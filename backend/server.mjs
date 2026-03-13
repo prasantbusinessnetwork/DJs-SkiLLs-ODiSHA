@@ -132,7 +132,7 @@ app.get('/api/videos', async (req, res) => {
   
   const API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || process.env.YOUTUBE_API_KEY;
   const CHANNEL_ID = process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || process.env.YOUTUBE_CHANNEL_ID;
-  const maxResults = Math.min(Number(req.query.maxResults) || 50, 50);
+  const maxResults = Math.min(Number(req.query.maxResults) || 500, 500);
 
   if (!API_KEY || !CHANNEL_ID) {
     console.warn("[videos] Missing YouTube API Key or Channel ID. Sending fallback videos.");

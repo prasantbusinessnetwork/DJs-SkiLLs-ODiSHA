@@ -31,7 +31,7 @@ export async function fetchLatestVideos(maxResults = 5): Promise<YouTubeVideo[]>
   return [];
 }
 
-export async function fetchAllVideos(maxResults = 50): Promise<YouTubeVideo[]> {
+export async function fetchAllVideos(maxResults = 500): Promise<YouTubeVideo[]> {
   const apiBase = getApiBase();
   
   try {
