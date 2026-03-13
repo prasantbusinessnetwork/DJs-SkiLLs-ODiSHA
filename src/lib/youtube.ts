@@ -16,7 +16,7 @@ export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]
   
   // 1. Try Local/Custom Backend first (fastest)
   try {
-    const url = new URL(`${apiBase}/api/latest-videos`);
+    const url = new URL(`${apiBase}/api/videos`);
     url.searchParams.set("maxResults", String(maxResults));
     const res = await fetchWithRetry(url.toString(), {}, 2, 8000);
     

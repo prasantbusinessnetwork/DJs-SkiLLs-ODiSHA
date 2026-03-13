@@ -67,6 +67,22 @@ app.get('/', (_req, res) => {
   res.send('Backend Running');
 });
 
+// ─── Videos (User requested route) ────────────────────────────────────────────
+// In a real app, this would fetch from a DB or YouTube API.
+// For now, we provide the endpoint as requested in Step 5 of the fix plan.
+app.get(['/api/videos', '/api/latest-videos'], (req, res) => {
+  console.log(`[videos] Fetching videos for ${req.ip}`);
+  // Initial fallback videos to ensure the site looks good after env var change
+  const fallbackVideos = [
+    { title: "Aaj Ki Raat (Remix)", artist: "DJs SkILLs ODISHA X Exzost", tag: "Latest", youtubeUrl: "https://www.youtube.com/watch?v=KsJ2-7cWTyg", videoId: "KsJ2-7cWTyg", thumbnail: "https://img.youtube.com/vi/KsJ2-7cWTyg/mqdefault.jpg" },
+    { title: "Tum Toh Dhokebaaz Ho", artist: "DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=uYTeGgKheFw", videoId: "uYTeGgKheFw", thumbnail: "https://img.youtube.com/vi/uYTeGgKheFw/mqdefault.jpg" },
+    { title: "JAMAL KUDU REMIX", artist: "DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=a5EEWUnI8rg", videoId: "a5EEWUnI8rg", thumbnail: "https://img.youtube.com/vi/a5EEWUnI8rg/mqdefault.jpg" },
+    { title: "SOFTLY (Remix)", artist: "Visual DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=k_smLZTvPug", videoId: "k_smLZTvPug", thumbnail: "https://img.youtube.com/vi/k_smLZTvPug/mqdefault.jpg" },
+    { title: "Illuminati (Remix)", artist: "Visual DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=hK651bev0uI", videoId: "hK651bev0uI", thumbnail: "https://img.youtube.com/vi/hK651bev0uI/mqdefault.jpg" },
+  ];
+  res.json(fallbackVideos);
+});
+
 // ─── Download (Direct Stream - Legacy/Fallback) ──────────────────────────────
 app.get('/api/stream', (req, res) => {
   // Existing streaming logic (spawn ytdlp | spawn ffmpeg)
