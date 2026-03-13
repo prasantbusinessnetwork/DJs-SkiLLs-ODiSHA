@@ -36,32 +36,20 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     try {
       console.log(`[MixCard] Download → ${downloadEndpoint}`);
       
-      const res = await fetchWithRetry(downloadEndpoint, {}, 3, 30000); // Higher timeout for downloads
+      // We use direct assignment instead of fetch/blob to avoid browser memory overload
+      // Especially for large files (10MB+), fetch().blob() will crash on mobile
+      toast.info("Preparing your download... Please wait.");
       
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: `Server temporarily unavailable (HTTP ${res.status}). Please try again.` }));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-
-      const blob = await res.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.style.display = "none";
-      a.href = blobUrl;
-      a.download = `${(title || "audio").replace(/[^\w\s-]/g, "_")}.mp3`;
-      document.body.appendChild(a);
-      a.click();
-
-      // Cleanup
+      // Small Delay to allow toast to show
       setTimeout(() => {
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(blobUrl);
-      }, 1000);
+        window.location.assign(downloadEndpoint);
+      }, 500);
 
-      setDlState("success");
-      toast.success("Download complete!");
-      setTimeout(() => setDlState("idle"), 5000);
+      // We can't track exact completion of location.assign, so we show success toast after a delay
+      setTimeout(() => {
+        setDlState("success");
+        setTimeout(() => setDlState("idle"), 5000);
+      }, 3000);
 
     } catch (error: any) {
       console.error("[MixCard] Download failed:", error);

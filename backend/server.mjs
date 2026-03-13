@@ -232,12 +232,34 @@ app.get('/api/download-mp3', async (req, res) => {
   console.log(`[download-mp3] Converting: ${videoUrl}`);
 
   try {
-    // We use yt-dlp to handle the conversion internally. This is more robust for metadata and structure.
-    const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --embed-metadata --embed-thumbnail --no-playlist --no-check-certificate --extractor-args "youtube:player_client=android,ios" -o "${outputPath}" "${videoUrl}"`;
-    
-    await execPromise(command);
+    const args = [
+      '-x', '--audio-format', 'mp3', '--audio-quality', '0',
+      '--embed-metadata', '--embed-thumbnail',
+      '--no-playlist', '--no-check-certificate',
+      '--extractor-args', 'youtube:player_client=android,ios',
+      '-o', outputPath,
+      videoUrl
+    ];
 
-    // Find the actual file (yt-dlp replaces %(title)s and %(ext)s)
+    console.log(`[download-mp3] Spawning yt-dlp for conversion...`);
+    
+    const ytdlpProc = spawn('yt-dlp', args);
+
+    // Collect stderr for logging/errors
+    let stderrData = '';
+    ytdlpProc.stderr.on('data', (data) => {
+      stderrData += data.toString();
+    });
+
+    await new Promise((resolve, reject) => {
+      ytdlpProc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`yt-dlp failed with code ${code}: ${stderrData}`));
+      });
+      ytdlpProc.on('error', reject);
+    });
+
+    // Find the actual file
     const files = fs.readdirSync(downloadsDir);
     const downloadedFile = files.find(f => f.startsWith(fileId) && f.endsWith('.mp3'));
 
@@ -247,23 +269,41 @@ app.get('/api/download-mp3', async (req, res) => {
 
     const fullFilePath = path.join(downloadsDir, downloadedFile);
     const finalFilename = `${titleParam}.mp3`;
+    const stats = fs.statSync(fullFilePath);
 
-    res.download(fullFilePath, finalFilename, (err) => {
-      if (err) {
-        console.error('[res.download] Error:', err);
-      }
-      // Cleanup file after download
+    // Set headers for explicit streaming
+    res.setHeader('Content-Length', stats.size);
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Disposition', `attachment; filename="${finalFilename}"`);
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    console.log(`[download-mp3] Streaming file: ${downloadedFile} (${stats.size} bytes)`);
+
+    const stream = fs.createReadStream(fullFilePath);
+    stream.pipe(res);
+
+    stream.on('end', () => {
+      // Cleanup file after stream ends
       try {
         fs.unlinkSync(fullFilePath);
-        console.log(`[cleanup] Deleted temporary file: ${downloadedFile}`);
-      } catch (unlinkErr) {
-        console.error('[cleanup] Failed to delete:', downloadedFile, unlinkErr);
+        console.log(`[cleanup] Deleted: ${downloadedFile}`);
+      } catch (e) {
+        console.error('[cleanup] Failed:', downloadedFile, e);
+      }
+    });
+
+    stream.on('error', (err) => {
+      console.error('[stream] Error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'stream_failed' });
       }
     });
 
   } catch (error) {
     console.error('[download-mp3] Failed:', error);
-    res.status(500).json({ error: 'conversion_failed', message: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'conversion_failed', message: error.message });
+    }
   }
 });
 
