@@ -67,20 +67,73 @@ app.get('/', (_req, res) => {
   res.send('Backend Running');
 });
 
-// ─── Videos (User requested route) ────────────────────────────────────────────
-// In a real app, this would fetch from a DB or YouTube API.
-// For now, we provide the endpoint as requested in Step 5 of the fix plan.
-app.get(['/api/videos', '/api/latest-videos'], (req, res) => {
+// ─── Videos (Dynamic YouTube API Fetch) ───────────────────────────────────────
+const fallbackVideos = [
+  { title: "Aaj Ki Raat (Remix)", artist: "DJs SkILLs ODISHA X Exzost", tag: "Latest", youtubeUrl: "https://www.youtube.com/watch?v=KsJ2-7cWTyg", videoId: "KsJ2-7cWTyg", thumbnail: "https://img.youtube.com/vi/KsJ2-7cWTyg/mqdefault.jpg" },
+  { title: "Tum Toh Dhokebaaz Ho", artist: "DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=uYTeGgKheFw", videoId: "uYTeGgKheFw", thumbnail: "https://img.youtube.com/vi/uYTeGgKheFw/mqdefault.jpg" },
+  { title: "JAMAL KUDU REMIX", artist: "DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=a5EEWUnI8rg", videoId: "a5EEWUnI8rg", thumbnail: "https://img.youtube.com/vi/a5EEWUnI8rg/mqdefault.jpg" },
+  { title: "SOFTLY (Remix)", artist: "Visual DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=k_smLZTvPug", videoId: "k_smLZTvPug", thumbnail: "https://img.youtube.com/vi/k_smLZTvPug/mqdefault.jpg" },
+  { title: "Illuminati (Remix)", artist: "Visual DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=hK651bev0uI", videoId: "hK651bev0uI", thumbnail: "https://img.youtube.com/vi/hK651bev0uI/mqdefault.jpg" },
+];
+
+app.get(['/api/videos', '/api/latest-videos'], async (req, res) => {
   console.log(`[videos] Fetching videos for ${req.ip}`);
-  // Initial fallback videos to ensure the site looks good after env var change
-  const fallbackVideos = [
-    { title: "Aaj Ki Raat (Remix)", artist: "DJs SkILLs ODISHA X Exzost", tag: "Latest", youtubeUrl: "https://www.youtube.com/watch?v=KsJ2-7cWTyg", videoId: "KsJ2-7cWTyg", thumbnail: "https://img.youtube.com/vi/KsJ2-7cWTyg/mqdefault.jpg" },
-    { title: "Tum Toh Dhokebaaz Ho", artist: "DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=uYTeGgKheFw", videoId: "uYTeGgKheFw", thumbnail: "https://img.youtube.com/vi/uYTeGgKheFw/mqdefault.jpg" },
-    { title: "JAMAL KUDU REMIX", artist: "DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=a5EEWUnI8rg", videoId: "a5EEWUnI8rg", thumbnail: "https://img.youtube.com/vi/a5EEWUnI8rg/mqdefault.jpg" },
-    { title: "SOFTLY (Remix)", artist: "Visual DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=k_smLZTvPug", videoId: "k_smLZTvPug", thumbnail: "https://img.youtube.com/vi/k_smLZTvPug/mqdefault.jpg" },
-    { title: "Illuminati (Remix)", artist: "Visual DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=hK651bev0uI", videoId: "hK651bev0uI", thumbnail: "https://img.youtube.com/vi/hK651bev0uI/mqdefault.jpg" },
-  ];
-  res.json(fallbackVideos);
+  
+  const API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || process.env.YOUTUBE_API_KEY;
+  const CHANNEL_ID = process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || process.env.YOUTUBE_CHANNEL_ID;
+  const maxResults = Math.min(Number(req.query.maxResults) || 50, 50);
+
+  if (!API_KEY || !CHANNEL_ID) {
+    console.warn("[videos] Missing YouTube API Key or Channel ID. Sending fallback videos.");
+    return res.json(fallbackVideos);
+  }
+
+  try {
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&order=date&maxResults=${maxResults}&type=video&key=${API_KEY}`;
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      console.error("[videos] YouTube API error:", await response.text());
+      return res.json(fallbackVideos);
+    }
+
+    const data = await response.json();
+    
+    const videos = data.items
+      .map((item, index) => {
+        const videoId = item.id?.videoId;
+        const snippet = item.snippet;
+        if (!videoId || !snippet) return null;
+
+        const title = snippet.title || "";
+        const normalizedTitle = title.toLowerCase();
+        if (normalizedTitle.includes("private video") || normalizedTitle.includes("deleted video")) {
+          return null;
+        }
+
+        const thumbnails = snippet.thumbnails || {};
+        const thumbnailUrl =
+          thumbnails.medium?.url ||
+          thumbnails.default?.url ||
+          `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+
+        return {
+          title,
+          artist: snippet.channelTitle,
+          tag: index === 0 ? "Latest" : "Remix",
+          youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+          videoId,
+          thumbnail: thumbnailUrl,
+          publishedAt: snippet.publishedAt,
+        };
+      })
+      .filter((v) => v !== null);
+
+    res.status(200).json(videos);
+  } catch (error) {
+    console.error("[videos] Fetch Exception:", error);
+    res.json(fallbackVideos);
+  }
 });
 
 // ─── Download (Direct Stream - Legacy/Fallback) ──────────────────────────────
@@ -136,7 +189,8 @@ app.get(['/api/download', '/api/download-mp3'], async (req, res) => {
       '-x', '--audio-format', 'mp3', '--audio-quality', '0',
       '--embed-metadata', // User explicitly requested this in Step 5
       '--no-playlist', '--no-check-certificate',
-      '--extractor-args', 'youtube:player_client=android,ios',
+      '--force-ipv4', '--no-warnings', // Added to prevent Railway IPv6 blocks and keep logs clean
+      '--extractor-args', 'youtube:player_client=android,web', // Fallback to multiple clients
       '-o', outputPath,
       videoUrl
     ];
@@ -160,7 +214,8 @@ app.get(['/api/download', '/api/download-mp3'], async (req, res) => {
       ytdlpProc.on('close', (code) => {
         console.log(`[download-mp3] yt-dlp exited with code ${code}`);
         if (code === 0) resolve();
-        else reject(new Error(`yt-dlp failed with code ${code}. Check logs for details.`));
+        // Include stderrData in the reject message so it is visible in the JSON response
+        else reject(new Error(`yt-dlp failed (code ${code}). Error: ${stderrData.substring(0, 200)}`));
       });
       ytdlpProc.on('error', (err) => {
         console.error(`[download-mp3] Spawn error: ${err.message}`);

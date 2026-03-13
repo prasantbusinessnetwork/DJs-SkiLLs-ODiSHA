@@ -12,7 +12,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # ── Install latest yt-dlp via pip (bullseye uses pip 20.x — no --break-system-packages needed) ──
-RUN pip3 install -U yt-dlp
+RUN pip3 install -U --no-cache-dir yt-dlp
 
 # ── Verify tools ─────────────────────────────────────────────────────────────
 RUN yt-dlp --version && ffmpeg -version | head -1
