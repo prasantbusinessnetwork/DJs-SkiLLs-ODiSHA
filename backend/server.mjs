@@ -200,7 +200,10 @@ app.get('/api/download', async (req, res) => {
   console.log(`[download] Converting: ${videoUrl}`);
 
   try {
-    const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --embed-metadata -o "${outputPath}" "${videoUrl}"`;
+    // 1. Updated command to bypass "bot" detection on Railway
+    // 2. Added --force-ipv4 as YouTube often blocks datacenter IPv6 ranges
+    // 3. Added multiple player_clients as fallbacks
+    const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --embed-metadata --force-ipv4 --extractor-args "youtube:player_client=ios,android,web" -o "${outputPath}" "${videoUrl}"`;
     console.log(`[download] Executing command: ${command}`);
 
     exec(command, (error, stdout, stderr) => {
