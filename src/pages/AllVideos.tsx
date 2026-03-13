@@ -156,7 +156,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
 };
 
 const AllVideos = () => {
-  const { data: videos, isLoading, isError } = useYouTubeVideos(500);
+  const { data: videos, isLoading, isError } = useYouTubeVideos(500, 'all');
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
 
