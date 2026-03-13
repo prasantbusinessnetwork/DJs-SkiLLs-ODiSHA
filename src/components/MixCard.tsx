@@ -38,11 +38,16 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
       
       // We use direct assignment instead of fetch/blob to avoid browser memory overload
       // Especially for large files (10MB+), fetch().blob() will crash on mobile
-      toast.info("Preparing your download... Please wait.");
+      // Use a hidden anchor to trigger download instead of location.assign
+      // This is often more reliable on mobile browsers
+      const link = document.createElement("a");
+      link.href = downloadEndpoint;
+      link.style.display = "none";
+      document.body.appendChild(link);
       
-      // Small Delay to allow toast to show
       setTimeout(() => {
-        window.location.assign(downloadEndpoint);
+        link.click();
+        setTimeout(() => document.body.removeChild(link), 100);
       }, 500);
 
       // We can't track exact completion of location.assign, so we show success toast after a delay

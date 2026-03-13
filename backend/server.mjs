@@ -266,23 +266,34 @@ app.get('/api/download-mp3', async (req, res) => {
       videoUrl
     ];
 
-    console.log(`[download-mp3] Spawning yt-dlp for conversion...`);
+    console.log(`[download-mp3] Spawning yt-dlp: yt-dlp ${args.join(' ')}`);
     
     const ytdlpProc = spawn('yt-dlp', args);
 
-    // Collect stderr for logging/errors
     let stderrData = '';
     ytdlpProc.stderr.on('data', (data) => {
-      stderrData += data.toString();
+      const msg = data.toString();
+      stderrData += msg;
+      if (msg.includes('ERROR:')) console.error(`[download-mp3] yt-dlp error: ${msg.trim()}`);
+    });
+
+    ytdlpProc.stdout.on('data', (data) => {
+       // Optional: Log progress from stdout if needed
     });
 
     await new Promise((resolve, reject) => {
       ytdlpProc.on('close', (code) => {
+        console.log(`[download-mp3] yt-dlp exited with code ${code}`);
         if (code === 0) resolve();
-        else reject(new Error(`yt-dlp failed with code ${code}: ${stderrData}`));
+        else reject(new Error(`yt-dlp failed with code ${code}. Check logs for details.`));
       });
-      ytdlpProc.on('error', reject);
+      ytdlpProc.on('error', (err) => {
+        console.error(`[download-mp3] Spawn error: ${err.message}`);
+        reject(err);
+      });
     });
+
+    console.log(`[download-mp3] Conversion complete. Checking for file: ${tempFile}`);
 
     const fullFilePath = outputPath;
     const finalFilename = `${titleParam || 'audio'}.mp3`;
