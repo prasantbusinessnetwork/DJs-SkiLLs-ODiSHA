@@ -10,6 +10,13 @@ export default async function handler(req: any, res: any) {
   }
 
   // Redirect the browser to the dedicated Railway backend's download-mp3 endpoint
+  if (!apiBase) {
+    return res.status(500).json({ 
+      error: "Backend URL not configured on Vercel", 
+      message: "Please add VITE_API_BASE_URL to your Vercel environment variables." 
+    });
+  }
+
   const targetUrl = `${apiBase}/api/download-mp3?url=${encodeURIComponent(targetId)}&title=${encodeURIComponent(title || "download")}`;
 
   console.log(`[Vercel Proxy] Redirecting browser to: ${targetUrl}`);

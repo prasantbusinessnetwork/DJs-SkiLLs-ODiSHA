@@ -27,6 +27,19 @@ const downloadsDir = path.join(process.cwd(), 'downloads');
 // Ensure downloads directory exists
 if (!fs.existsSync(downloadsDir)) {
   fs.mkdirSync(downloadsDir, { recursive: true });
+} else {
+  // Cleanup old files on startup
+  try {
+    const files = fs.readdirSync(downloadsDir);
+    for (const file of files) {
+      if (file.endsWith('.mp3')) {
+        fs.unlinkSync(path.join(downloadsDir, file));
+      }
+    }
+    console.log('[server] Startup cleanup: downloads directory cleared');
+  } catch (e) {
+    console.error('[server] Startup cleanup failed:', e);
+  }
 }
 
 const app = express();
@@ -291,7 +304,7 @@ app.get('/api/download-mp3', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${finalFilename}"`);
     res.setHeader('Accept-Ranges', 'bytes');
 
-    console.log(`[download-mp3] Streaming file: ${downloadedFile} (${stats.size} bytes)`);
+    console.log(`[download-mp3] Streaming file: ${tempFile} (${stats.size} bytes)`);
 
     const stream = fs.createReadStream(fullFilePath);
     stream.pipe(res);
@@ -300,9 +313,9 @@ app.get('/api/download-mp3', async (req, res) => {
       // Cleanup file after stream ends
       try {
         fs.unlinkSync(fullFilePath);
-        console.log(`[cleanup] Deleted: ${downloadedFile}`);
+        console.log(`[cleanup] Deleted: ${tempFile}`);
       } catch (e) {
-        console.error('[cleanup] Failed:', downloadedFile, e);
+        console.error('[cleanup] Failed:', tempFile, e);
       }
     });
 
