@@ -19,49 +19,52 @@ type DownloadState = "idle" | "downloading" | "success" | "error";
 const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: MixCardProps) => {
   const [playing, setPlaying] = useState(false);
   const [dlState, setDlState] = useState<DownloadState>("idle");
-  const apiBase = getApiBase();
 
-  // --- 1. ROBUST BLOB DOWNLOAD TRIGGER ---
+  // ── Download handler ─────────────────────────────────────────────────────
   const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!videoId) return;
+    if (!videoId || dlState === "downloading") return;
 
     setDlState("downloading");
-    const downloadUrl = `${apiBase}/api/download?url=${encodeURIComponent(videoId)}`;
+
+    const apiBase = getApiBase();
+    // Always send full YouTube URL so backend has no ambiguity
+    const youtubeFullUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    const downloadEndpoint = `${apiBase}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(title || "audio")}`;
 
     try {
-      console.log(`[Frontend] Fetching Blob: ${downloadUrl}`);
-      
-      const response = await fetch(downloadUrl);
-      
-      if (!response.ok) {
-        // Try to parse error message from JSON if possible
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Server returned ${response.status}`);
+      console.log(`[MixCard] Download → ${downloadEndpoint}`);
+
+      const res = await fetch(downloadEndpoint);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(err.error || `HTTP ${res.status}`);
       }
 
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+
       const a = document.createElement("a");
       a.style.display = "none";
-      a.href = url;
-      // Use title or videoId as filename
-      const safeTitle = (title || "audio").replace(/[^a-z0-9]/gi, "_").toLowerCase();
-      a.download = `${safeTitle}.mp3`;
+      a.href = blobUrl;
+      a.download = `${(title || "audio").replace(/[^\w\s-]/g, "_")}.mp3`;
       document.body.appendChild(a);
       a.click();
-      
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(blobUrl);
+      }, 1000);
 
       setDlState("success");
       toast.success("Download complete!");
       setTimeout(() => setDlState("idle"), 5000);
 
     } catch (error: any) {
-      console.error("[Download Error]", error);
+      console.error("[MixCard] Download failed:", error);
       setDlState("error");
-      toast.error(`Download failed: ${error.message}`);
+      toast.error(`Download failed: ${error.message || "Please try again."}`);
       setTimeout(() => setDlState("idle"), 6000);
     }
   };
