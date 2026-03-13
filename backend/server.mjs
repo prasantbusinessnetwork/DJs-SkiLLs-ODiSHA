@@ -24,8 +24,8 @@ const PORT = process.env.PORT || 3000;
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['Content-Disposition', 'Content-Length'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Range'],
+  exposedHeaders: ['Content-Disposition', 'Content-Length', 'Accept-Ranges'],
 }));
 
 // ─── Health ───────────────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ app.get(['/download', '/api/download'], (req, res) => {
     '--no-playlist',
     '--no-check-certificate',
     '--extractor-args', 'youtube:player_client=android,ios',
-    '-f', 'bestaudio/best',
+    '--format', 'bestaudio[ext=m4a]/bestaudio/best', // Prefer m4a for better ffmpeg compatibility in pipes
     '-o', '-',           // stream to stdout
     videoUrl,
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -88,12 +88,14 @@ app.get(['/download', '/api/download'], (req, res) => {
   // ── Spawn ffmpeg ───────────────────────────────────────────────────────────
   const ffmpeg = spawn('ffmpeg', [
     '-hide_banner',
-    '-loglevel', 'warning',
+    '-loglevel', 'error',
     '-i', 'pipe:0',      // read from stdin
     '-vn',               // no video
+    '-acodec', 'libmp3lame',
     '-ar', '44100',      // sample rate
     '-ac', '2',          // stereo
-    '-b:a', '128k',      // audio bitrate (NOT -ab, that is deprecated)
+    '-b:a', '192k',      // higher CBR for better compatibility
+    '-id3v2_version', '3',
     '-f', 'mp3',
     'pipe:1',            // write to stdout
   ], { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -102,7 +104,7 @@ app.get(['/download', '/api/download'], (req, res) => {
   ytdlp.stdout.pipe(ffmpeg.stdin);
 
   // ── Set HTTP headers BEFORE piping ────────────────────────────────────────
-  res.setHeader('Content-Type', 'application/octet-stream'); // Better for force download
+  res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Transfer-Encoding', 'chunked');

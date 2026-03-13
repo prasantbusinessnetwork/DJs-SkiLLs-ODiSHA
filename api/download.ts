@@ -3,7 +3,8 @@ export default async function handler(req: any, res: any) {
   const targetId = videoId || url || id;
 
   // Use env variable or fallback
-  const apiBase = (process.env.VITE_API_BASE_URL || "https://djs-skills-odisha-production.up.railway.app").replace(/\/$/, "");
+  // Use env variable or fallback
+  const apiBase = (process.env.VITE_API_BASE_URL || process.env.API_BASE_URL || "https://djs-skills-odisha-production.up.railway.app").replace(/\/$/, "");
 
   if (!targetId) {
     return res.status(400).json({ error: "Missing videoId, url, or id" });
