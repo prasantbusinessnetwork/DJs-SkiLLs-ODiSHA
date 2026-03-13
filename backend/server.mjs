@@ -233,7 +233,7 @@ app.get('/api/download-mp3', async (req, res) => {
 
   try {
     // We use yt-dlp to handle the conversion internally. This is more robust for metadata and structure.
-    const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --no-playlist --no-check-certificate --extractor-args "youtube:player_client=android,ios" -o "${outputPath}" "${videoUrl}"`;
+    const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --embed-metadata --embed-thumbnail --no-playlist --no-check-certificate --extractor-args "youtube:player_client=android,ios" -o "${outputPath}" "${videoUrl}"`;
     
     await execPromise(command);
 
