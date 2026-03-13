@@ -1,6 +1,20 @@
+async function fetchWithRetry(url: string, options: any = {}, retries = 3): Promise<Response> {
+  try {
+    const response = await fetch(url, options);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response;
+  } catch (error) {
+    if (retries > 0) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return fetchWithRetry(url, options, retries - 1);
+    }
+    throw error;
+  }
+}
+
 export default async function handler(req: any, res: any) {
   const { videoId, title } = req.query;
-  const apiBase = (process.env.VITE_API_BASE_URL || "https://djs-skills-odisha-production.up.railway.app").replace(/\/$/, "");
+  const apiBase = (process.env.VITE_API_BASE_URL || process.env.API_BASE_URL || "https://djs-skills-odisha-production.up.railway.app").replace(/\/$/, "");
 
   if (!videoId) {
     return res.status(400).json({ error: "Missing videoId" });
@@ -8,7 +22,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     const targetUrl = `${apiBase}/api/prepare?videoId=${videoId}&title=${encodeURIComponent(title || "")}`;
-    const response = await fetch(targetUrl);
+    const response = await fetchWithRetry(targetUrl, { signal: AbortSignal.timeout(10000) });
     const data = await response.json();
     return res.status(response.status).json(data);
   } catch (error: any) {

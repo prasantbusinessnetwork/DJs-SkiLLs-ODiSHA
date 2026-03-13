@@ -23,8 +23,9 @@ const PORT = process.env.PORT || 3000;
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'OPTIONS'],
-  allowedHeaders: ['Content-Type'],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Disposition', 'Content-Length'],
 }));
 
 // ─── Health ───────────────────────────────────────────────────────────────────
@@ -38,7 +39,7 @@ app.get('/api/health', (_req, res) => {
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {
-  res.send('<h3>DJs SkiLLs ODiSHA — API OK</h3><p>Use /api/download?url=&lt;youtube_url_or_video_id&gt;</p>');
+  res.send('Backend Running');
 });
 
 // ─── Download ─────────────────────────────────────────────────────────────────
@@ -101,11 +102,12 @@ app.get(['/download', '/api/download'], (req, res) => {
   ytdlp.stdout.pipe(ffmpeg.stdin);
 
   // ── Set HTTP headers BEFORE piping ────────────────────────────────────────
-  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader('Content-Type', 'application/octet-stream'); // Better for force download
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Transfer-Encoding', 'chunked');
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
 
   ffmpeg.stdout.pipe(res);
 

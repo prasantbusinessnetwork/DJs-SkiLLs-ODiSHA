@@ -3,6 +3,7 @@ import { Play, Download, Loader2, CheckCircle, AlertCircle } from "lucide-react"
 import { getApiBase } from "../lib/utils";
 import LazyImage from "./LazyImage";
 import { toast } from "sonner";
+import { fetchWithRetry } from "../utils/fetchWithRetry";
 
 interface MixCardProps {
   title: string;
@@ -34,10 +35,11 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
 
     try {
       console.log(`[MixCard] Download → ${downloadEndpoint}`);
-
-      const res = await fetch(downloadEndpoint);
+      
+      const res = await fetchWithRetry(downloadEndpoint, {}, 3, 30000); // Higher timeout for downloads
+      
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        const err = await res.json().catch(() => ({ error: `Server temporarily unavailable (HTTP ${res.status}). Please try again.` }));
         throw new Error(err.error || `HTTP ${res.status}`);
       }
 

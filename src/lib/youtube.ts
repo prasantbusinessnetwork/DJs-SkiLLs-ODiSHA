@@ -1,4 +1,5 @@
 import { getApiBase } from "./utils";
+import { fetchWithRetry } from "../utils/fetchWithRetry";
 
 export interface YouTubeVideo {
   title: string;
@@ -17,7 +18,7 @@ export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]
   try {
     const url = new URL(`${apiBase}/api/latest-videos`);
     url.searchParams.set("maxResults", String(maxResults));
-    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(4000) });
+    const res = await fetchWithRetry(url.toString(), {}, 2, 8000);
     
     if (res.ok) {
       const data = await res.json();
@@ -31,9 +32,8 @@ export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]
   }
 
   // 2. Try Vercel Serverless API Route (only if not on localhost or if local failed)
-  // We check res.headers to ensure we aren't getting a static file (Vite dev server quirk)
   try {
-    const vercelRes = await fetch(`/api/youtube?maxResults=${maxResults}`);
+    const vercelRes = await fetchWithRetry(`/api/youtube?maxResults=${maxResults}`, {}, 1, 10000);
     const contentType = vercelRes.headers.get("content-type");
     if (vercelRes.ok && contentType?.includes("application/json")) {
       const videos = await vercelRes.json();

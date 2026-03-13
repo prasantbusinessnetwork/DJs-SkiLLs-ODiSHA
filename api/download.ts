@@ -2,8 +2,8 @@ export default async function handler(req: any, res: any) {
   const { videoId, url, id, title } = req.query;
   const targetId = videoId || url || id;
 
-  // Hardcoded Railway prod URL for permanent connection
-  const apiBase = "https://djs-skills-odisha-production.up.railway.app";
+  // Use env variable or fallback
+  const apiBase = (process.env.VITE_API_BASE_URL || "https://djs-skills-odisha-production.up.railway.app").replace(/\/$/, "");
 
   if (!targetId) {
     return res.status(400).json({ error: "Missing videoId, url, or id" });
