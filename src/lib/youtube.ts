@@ -14,7 +14,7 @@ export interface YouTubeVideo {
 export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]> {
   const apiBase = getApiBase();
   
-  // 1. Try Local/Custom Backend first (fastest)
+  // 1. Fetch from Unified Backend (Railway)
   try {
     const url = new URL(`${apiBase}/api/videos`);
     url.searchParams.set("maxResults", String(maxResults));
@@ -26,22 +26,10 @@ export async function fetchLatestVideos(maxResults = 15): Promise<YouTubeVideo[]
       if (Array.isArray(data)) return data; 
     }
   } catch (e) {
-    if (window.location.hostname === "localhost") {
-       console.warn("Local backend fetch timed out or failed.");
-    }
+    console.error("Backend fetch failed:", e);
   }
 
-  // 2. Try Vercel Serverless API Route (only if not on localhost or if local failed)
-  try {
-    const vercelRes = await fetchWithRetry(`/api/youtube?maxResults=${maxResults}`, {}, 1, 10000);
-    const contentType = vercelRes.headers.get("content-type");
-    if (vercelRes.ok && contentType?.includes("application/json")) {
-      const videos = await vercelRes.json();
-      if (Array.isArray(videos)) return videos;
-    }
-  } catch (e) {
-    console.error("Vercel serverless fallback failed:", e);
-  }
-
+  // Strictly avoiding relative paths per Step 10.
+  // We rely entirely on the Railway backend.
   return [];
 }

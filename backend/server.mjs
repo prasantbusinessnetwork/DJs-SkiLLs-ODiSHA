@@ -134,7 +134,7 @@ app.get(['/api/download', '/api/download-mp3'], async (req, res) => {
   try {
     const args = [
       '-x', '--audio-format', 'mp3', '--audio-quality', '0',
-      '--embed-metadata', '--embed-thumbnail', // User explicitly requested both
+      '--embed-metadata', // User explicitly requested this in Step 5
       '--no-playlist', '--no-check-certificate',
       '--extractor-args', 'youtube:player_client=android,ios',
       '-o', outputPath,
