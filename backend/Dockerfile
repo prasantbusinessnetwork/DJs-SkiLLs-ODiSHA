@@ -1,18 +1,7 @@
 FROM node:18-bullseye
 
-# ── System dependencies ──────────────────────────────────────────────────────
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      ffmpeg \
-      python3 \
-      python3-pip \
-      ca-certificates \
-      curl && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# ── Install latest yt-dlp via pip (bullseye uses pip 20.x — no --break-system-packages needed) ──
-RUN pip3 install -U --no-cache-dir yt-dlp
+RUN apt-get update && apt-get install -y ffmpeg python3 python3-pip
+RUN pip3 install --no-cache-dir yt-dlp
 
 # ── Verify tools ─────────────────────────────────────────────────────────────
 RUN yt-dlp --version && ffmpeg -version | head -1
