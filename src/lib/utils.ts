@@ -14,5 +14,7 @@ export function cn(...inputs: ClassValue[]) {
 import { API_BASE } from "./config";
 
 export function getApiBase() {
-  return API_BASE.replace(/\/$/, "");
+  // If env vars are missing, fallback to the known production URL to avoid relative path's 404
+  const base = API_BASE || "https://djs-skills-odisha-production.up.railway.app";
+  return base.replace(/\/$/, "");
 }
