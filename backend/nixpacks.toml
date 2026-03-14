@@ -1,0 +1,15 @@
+[phases.setup]
+aptPkgs = ["ffmpeg", "python3"]
+
+[phases.install]
+cmds = [
+  "npm install",
+  "wget https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp",
+  "chmod a+rx /usr/local/bin/yt-dlp"
+]
+
+[phases.build]
+cmds = []
+
+[start]
+cmd = "npm start"

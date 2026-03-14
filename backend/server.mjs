@@ -42,6 +42,18 @@ if (!fs.existsSync(downloadsDir)) {
   }
 }
 
+// ─── Setup Cookies from Env ───────────────────────────────────────────────────
+if (process.env.YOUTUBE_COOKIES) {
+  try {
+    const cookiesPath = path.join(process.cwd(), 'cookies.txt');
+    // Save string format exactly as passed from env to cookies.txt
+    fs.writeFileSync(cookiesPath, process.env.YOUTUBE_COOKIES.replace(/\\n/g, '\n'));
+    console.log('[server] Startup: Wrote YOUTUBE_COOKIES from env to cookies.txt');
+  } catch (e) {
+    console.error('[server] Startup: Failed to write cookies from env:', e);
+  }
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -88,7 +100,7 @@ app.get('/api/latest', async (req, res) => {
   }
 
   try {
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&order=date&maxResults=5&type=video&key=${API_KEY}`;
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&order=date&maxResults=50&type=video&key=${API_KEY}`;
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -120,7 +132,7 @@ app.get('/api/latest', async (req, res) => {
       })
       .filter((v) => v !== null);
 
-    res.status(200).json(videos);
+    res.status(200).json(videos.slice(0, 5));
   } catch (error) {
     console.error("[latest] Fetch Exception:", error);
     res.json(fallbackVideos.slice(0, 5));
@@ -137,43 +149,32 @@ app.get('/api/videos', async (req, res) => {
   }
 
   try {
-    let allVideos = [];
-    let nextPageToken = "";
-    
-    // The YouTube Search API has a max of 50 results per call.
-    // We loop to fetch until we hit the targetCount or run out of pages.
-    while (allVideos.length < targetCount) {
-      const remaining = targetCount - allVideos.length;
-      const currentMax = Math.min(remaining, 50);
-      
-      let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&order=date&maxResults=${currentMax}&type=video&key=${API_KEY}`;
-      if (nextPageToken) url += `&pageToken=${nextPageToken}`;
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&order=date&maxResults=50&type=video&key=${API_KEY}`;
+    const response = await fetch(url);
 
-      const response = await fetch(url);
-      if (!response.ok) break;
-
-      const data = await response.json();
-      if (!data.items || data.items.length === 0) break;
-
-      const batch = data.items.map((item) => {
-        const videoId = item.id?.videoId;
-        const snippet = item.snippet;
-        return {
-          title: snippet.title,
-          artist: snippet.channelTitle,
-          tag: "Mix",
-          youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
-          videoId,
-          thumbnail: snippet.thumbnails?.medium?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-          publishedAt: snippet.publishedAt,
-        };
-      });
-
-      allVideos = [...allVideos, ...batch];
-      nextPageToken = data.nextPageToken;
-
-      if (!nextPageToken) break;
+    if (!response.ok) {
+      console.error("[videos] YouTube API error:", await response.text());
+      return res.json(fallbackVideos);
     }
+    
+    const data = await response.json();
+    if (!data.items || data.items.length === 0) {
+      return res.json(fallbackVideos);
+    }
+
+    const allVideos = data.items.map((item) => {
+      const videoId = item.id?.videoId;
+      const snippet = item.snippet;
+      return {
+        title: snippet.title,
+        artist: snippet.channelTitle,
+        tag: "Mix",
+        youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        videoId,
+        thumbnail: snippet.thumbnails?.medium?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+        publishedAt: snippet.publishedAt,
+      };
+    }).filter(v => v !== null);
 
     res.status(200).json(allVideos);
   } catch (error) {
@@ -199,8 +200,12 @@ app.get("/api/download", (req, res) => {
   const fileId = Date.now();
   const filePath = path.join(downloadsDir, `download_${fileId}.mp3`);
 
-  // Step 2 & 3: Standardized command
-  const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --embed-metadata -o "${filePath}" "${url}"`;
+  // Setup cookies for bot detection bypass if available
+  const cookiesPath = path.join(process.cwd(), 'cookies.txt');
+  const cookiesFlag = fs.existsSync(cookiesPath) ? `--cookies "${cookiesPath}"` : '';
+
+  // Step 2 & 3: Standardized command with anti-bot bypass
+  const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --no-warnings --rm-cache-dir ${cookiesFlag} --extractor-args "youtube:player_client=android,ios" -o "${filePath}" "${url}"`;
   console.log(`[download] Executing: ${command}`);
 
   exec(command, (error) => {

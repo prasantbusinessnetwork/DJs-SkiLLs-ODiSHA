@@ -3,7 +3,7 @@ import { useYouTubeVideos } from "@/hooks/useYouTubeVideos";
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import LazyImage from "@/components/LazyImage";
-import { getApiBase } from "@/lib/utils";
+
 import { YouTubeVideo } from "@/lib/youtube";
 import { toast } from "sonner";
 
@@ -27,7 +27,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
 
     setDlState("preparing");
 
-    const apiBase = getApiBase();
+    const apiBase = import.meta.env.VITE_API_URL || "";
     // Always send full YouTube URL so backend has no ambiguity
     const youtubeFullUrl = `https://www.youtube.com/watch?v=${video.videoId}`;
     const downloadEndpoint = `${apiBase}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(video.title)}`;

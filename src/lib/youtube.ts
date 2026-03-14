@@ -1,7 +1,4 @@
-import { getApiBase } from "./utils";
-import { fetchWithRetry } from "../utils/fetchWithRetry";
-
-const API = import.meta.env.VITE_API_URL || getApiBase();
+const API = import.meta.env.VITE_API_URL;
 
 export interface YouTubeVideo {
   title: string;
@@ -11,14 +8,9 @@ export interface YouTubeVideo {
   videoId: string;
   thumbnail: string;
   publishedAt: string;
-}
-
 export async function fetchLatestVideos(maxResults = 5): Promise<YouTubeVideo[]> {
-  const apiBase = getApiBase();
-  
   try {
-    const url = new URL(`${apiBase}/api/latest`);
-    const res = await fetchWithRetry(url.toString(), {}, 2, 8000);
+    const res = await fetch(`${API}/api/latest`);
     
     if (res.ok) {
       const data = await res.json();
@@ -29,15 +21,9 @@ export async function fetchLatestVideos(maxResults = 5): Promise<YouTubeVideo[]>
   }
 
   return [];
-}
-
 export async function fetchAllVideos(maxResults = 500): Promise<YouTubeVideo[]> {
-  const apiBase = getApiBase();
-  
   try {
-    const url = new URL(`${apiBase}/api/videos`);
-    url.searchParams.set("maxResults", String(maxResults));
-    const res = await fetchWithRetry(url.toString(), {}, 2, 8000);
+    const res = await fetch(`${API}/api/videos`);
     
     if (res.ok) {
       const data = await res.json();

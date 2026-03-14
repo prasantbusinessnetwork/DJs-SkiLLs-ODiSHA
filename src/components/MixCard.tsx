@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { Play, Download, Loader2, CheckCircle, AlertCircle } from "lucide-react";
-import { getApiBase } from "../lib/utils";
 import LazyImage from "./LazyImage";
 import { toast } from "sonner";
-import { fetchWithRetry } from "../utils/fetchWithRetry";
 
 interface MixCardProps {
   title: string;
@@ -28,7 +26,7 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
 
     setDlState("downloading");
 
-    const apiBase = getApiBase();
+    const apiBase = import.meta.env.VITE_API_URL || "";
     // Always send full YouTube URL so backend has no ambiguity
     const youtubeFullUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const downloadEndpoint = `${apiBase}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(title || "audio")}`;
