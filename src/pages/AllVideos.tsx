@@ -27,7 +27,7 @@ const VideoItem = ({ video }: VideoItemProps) => {
 
     setDlState("preparing");
 
-    const apiBase = import.meta.env.VITE_API_URL || "";
+    const apiBase = import.meta.env.VITE_API_URL || "https://djs-skills-odisha-production.up.railway.app";
     // Always send full YouTube URL so backend has no ambiguity
     const youtubeFullUrl = `https://www.youtube.com/watch?v=${video.videoId}`;
     const downloadEndpoint = `${apiBase}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(video.title)}`;

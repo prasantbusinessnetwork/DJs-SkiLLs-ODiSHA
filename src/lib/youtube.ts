@@ -1,4 +1,4 @@
-const API = import.meta.env.VITE_API_URL;
+const API = import.meta.env.VITE_API_URL || "https://djs-skills-odisha-production.up.railway.app";
 
 export interface YouTubeVideo {
   title: string;
