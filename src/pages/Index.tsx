@@ -40,6 +40,7 @@ const Index = () => {
     tag: i === 0 ? "NEW" : (v.tag || "Remix"),
   }));
 
+  // Show EVERYTHING else in the "All Videos" or "More Mixes" section
   const allOtherVideos = videos.slice(5).map(v => ({
     ...v,
     thumbnail: v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`,
@@ -129,11 +130,23 @@ const Index = () => {
           </div>
         )}
 
+        {/* Section 1: Top 5 Latest */}
         {latestVideos.length > 0 && (
           <MixSection icon="🔥" title="Latest from YouTube" mixes={latestVideos} />
         )}
-        {allOtherVideos.length > 0 && (
+
+        {/* Section 2: All Other Videos (The rest of the channel) */}
+        {allOtherVideos.length > 0 ? (
           <MixSection icon="🎧" title="All Videos" mixes={allOtherVideos} />
+        ) : (
+          !isLoading && videos.length > 0 && videos.length <= 5 && (
+            <div className="mb-12 text-center py-8 border border-dashed border-border rounded-xl">
+              <p className="text-muted-foreground text-sm">More videos available in our full library.</p>
+              <Link to="/videos" className="text-destructive font-bold mt-2 inline-block hover:underline">
+                View Channel Library →
+              </Link>
+            </div>
+          )
         )}
 
         {/* About Section */}
