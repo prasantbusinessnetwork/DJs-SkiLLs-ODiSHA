@@ -23,7 +23,9 @@ import { rateLimit } from 'express-rate-limit'; // Added for protection
 
 const execPromise = promisify(exec);
 const __dirname = path.dirname(new URL(import.meta.url).pathname).replace(/^\/([a-zA-Z]:)/, '$1'); // Handle Windows paths from URL
-const downloadsDir = path.join(process.cwd(), 'downloads');
+// Use /tmp for Railway/Linux environments (guaranteed writeable)
+const isWindows = process.platform === 'win32';
+const downloadsDir = isWindows ? path.join(process.cwd(), 'downloads') : '/tmp/djs_downloads';
 
 // Ensure downloads directory exists
 if (!fs.existsSync(downloadsDir)) {
@@ -33,11 +35,11 @@ if (!fs.existsSync(downloadsDir)) {
   try {
     const files = fs.readdirSync(downloadsDir);
     for (const file of files) {
-      if (file.endsWith('.mp3')) {
+      if (file.startsWith('dl_')) {
         fs.unlinkSync(path.join(downloadsDir, file));
       }
     }
-    console.log('[server] Startup cleanup: downloads directory cleared');
+    console.log(`[server] Startup cleanup: ${downloadsDir} cleared`);
   } catch (e) {
     console.error('[server] Startup cleanup failed:', e);
   }
@@ -205,7 +207,7 @@ app.get('/api/stream', (req, res) => {
   // ... (omitted for brevity in this chunk, I'll keep it as /api/stream)
 });
 
-// ─── MP3 Download (Atomic Local Buffer Strategy) ─────────────────────────────
+// ─── MP3 Download (Atomic Bulletproof Strategy) ──────────────────────────────
 app.get("/api/download", downloadLimiter, async (req, res) => {
   const url = req.query.url;
   const requestedTitle = req.query.title ? String(req.query.title) : "audio";
@@ -213,74 +215,100 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
 
   if (!url) return res.status(400).json({ error: "missing_url" });
 
-  const tempId = `dl_${Date.now()}`;
-  const tempPath = path.join(downloadsDir, `${tempId}.mp3`);
+  const tempId = `dl_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const rawPath = path.join(downloadsDir, `${tempId}_raw`);
+  const mp3Path = path.join(downloadsDir, `${tempId}.mp3`);
   
-  console.log(`[download] Start: ${url} -> ${tempPath}`);
+  console.log(`[download] Processing: ${url}`);
 
   const cookiesPath = path.join(process.cwd(), 'cookies.txt');
   const hasCookies = fs.existsSync(cookiesPath);
 
-  const runDownload = (useCookies) => {
+  // Helper to run a shell command
+  const run = (cmd, args) => {
     return new Promise((resolve, reject) => {
-      const flags = [
-        '--no-check-certificates',
-        '--no-warnings',
-        '--no-playlist',
-        '--extract-audio',
-        '--audio-format', 'mp3',
-        '--audio-quality', '0',
-        '--extractor-args', 'youtube:player_client=android,ios',
-        '-o', tempPath,
-        url
-      ];
-      if (useCookies && hasCookies) flags.push('--cookies', cookiesPath);
-
-      console.log(`[download] Executing yt-dlp ${useCookies ? '(with cookies)' : '(no cookies)'}`);
-      const proc = spawn('yt-dlp', flags);
-
-      let errLog = '';
-      proc.stderr.on('data', (d) => errLog += d.toString());
+      console.log(`[exec] ${cmd} ${args.join(' ')}`);
+      const proc = spawn(cmd, args);
+      let stderr = '';
+      proc.stderr.on('data', (d) => stderr += d.toString());
       proc.on('close', (code) => {
-        if (code === 0 && fs.existsSync(tempPath) && fs.statSync(tempPath).size > 1000) {
-          resolve();
-        } else {
-          reject(new Error(`Exit ${code}: ${errLog}`));
-        }
+        if (code === 0) resolve();
+        else reject(new Error(`Exit ${code}: ${stderr}`));
       });
     });
   };
 
   try {
-    // Attempt 1: With cookies (if available)
+    // Step 1: Download RAW audio from YouTube
+    const downloadFlags = [
+      '--no-check-certificates',
+      '--no-warnings',
+      '--no-playlist',
+      '-f', 'bestaudio',
+      '--extractor-args', 'youtube:player_client=android,ios',
+      '-o', rawPath,
+      url
+    ];
+    
+    // Attempt with/without cookies
     try {
-      await runDownload(true);
+      const flags = hasCookies ? ['--cookies', cookiesPath, ...downloadFlags] : downloadFlags;
+      await run('yt-dlp', flags);
     } catch (e) {
-      console.warn(`[download] Attempt 1 failed: ${e.message}. Retrying without cookies...`);
-      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-      await runDownload(false);
+      console.warn(`[download] First attempt failed, trying fallback...`);
+      if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
+      await run('yt-dlp', downloadFlags);
     }
 
-    // If we reach here, download succeeded
-    const stats = fs.statSync(tempPath);
-    console.log(`[download] success: ${stats.size} bytes`);
+    // Verify raw file
+    if (!fs.existsSync(rawPath) || fs.statSync(rawPath).size < 1000) {
+      throw new Error('Raw download failed or file empty');
+    }
 
+    // Step 2: Convert to high-quality MP3 using FFmpeg
+    await run('ffmpeg', [
+      '-i', rawPath,
+      '-acodec', 'libmp3lame',
+      '-b:a', '192k',
+      '-ar', '44100',
+      '-y', // Overwrite
+      mp3Path
+    ]);
+
+    // Verify MP3 file
+    if (!fs.existsSync(mp3Path) || fs.statSync(mp3Path).size < 1000) {
+      throw new Error('Conversion failed or output empty');
+    }
+
+    const stats = fs.statSync(mp3Path);
+    console.log(`[download] Success: ${stats.size} bytes`);
+
+    // Step 3: Serve the file
     res.setHeader("Content-Type", "audio/mpeg");
     res.setHeader("Content-Length", stats.size);
     res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"`);
     
-    const stream = fs.createReadStream(tempPath);
+    const stream = fs.createReadStream(mp3Path);
     stream.pipe(res);
 
     stream.on('end', () => {
-      fs.unlink(tempPath, () => {});
+      // Cleanup
+      try {
+        if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
+        if (fs.existsSync(mp3Path)) fs.unlinkSync(mp3Path);
+      } catch (e) {}
     });
 
   } catch (err) {
-    console.error(`[download] Final failure: ${err.message}`);
-    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    console.error(`[download] ERROR: ${err.message}`);
+    // Cleanup on error
+    try {
+      if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
+      if (fs.existsSync(mp3Path)) fs.unlinkSync(mp3Path);
+    } catch (e) {}
+    
     if (!res.headersSent) {
-      res.status(500).json({ error: "download_failed", message: err.message });
+      res.status(500).send(`Error: ${err.message}`);
     }
   }
 });
