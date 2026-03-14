@@ -241,17 +241,16 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
   try {
     // Step 1: Download RAW audio from YouTube
     // Modern yt-dlp flags to bypass "Bot" detection
-    // Added --no-video and --no-playlist to prevent "more than one file" error
+    // Using 'ba/b' ensures we always get SOMETHING even if 'bestaudio' isn't available
     const downloadFlags = [
       '--no-check-certificates',
       '--no-warnings',
       '--no-playlist',
-      '--no-video',
-      '-f', 'bestaudio',
+      '-f', 'ba/b',
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
       '--extractor-args', 'youtube:player_client=web,android',
       '--geo-bypass',
-      '-o', `${rawPath}.%(ext)s`, // Let yt-dlp decide extension
+      '-o', `${rawPath}.%(ext)s`,
       url
     ];
     
