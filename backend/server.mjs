@@ -133,7 +133,7 @@ const videoCache = {
   data: null,
   lastFetched: 0,
   isFetching: false,
-  TTL: 60 * 60 * 1000, // 1 Hour cache
+  TTL: 5 * 60 * 1000, // 5 Minutes cache (Faster updates)
 };
 
 const fallbackVideos = [
