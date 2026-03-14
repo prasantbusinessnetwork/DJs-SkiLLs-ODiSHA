@@ -197,8 +197,11 @@ app.get("/api/download", (req, res) => {
       return res.status(500).json({ error: "conversion_failed" });
     }
 
+    const requestedTitle = req.query.title ? String(req.query.title) : "audio";
+    const safeTitle = requestedTitle.replace(/[^\w\s-]/gi, '').trim() || "audio";
+
     res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Disposition", "attachment; filename=\"audio.mp3\"");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"`);
 
     if (fs.existsSync(filePath)) {
       const stream = fs.createReadStream(filePath);

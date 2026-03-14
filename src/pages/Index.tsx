@@ -131,25 +131,34 @@ const Index = () => {
         {isLoading && (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <span className="ml-3 text-muted-foreground">Loading latest videos...</span>
+            <span className="ml-3 text-muted-foreground">Loading YouTube channel...</span>
           </div>
         )}
 
-        {/* Section 1: Top 5 Latest */}
+        {/* Section 1: Latest Videos (Top 5) */}
         {latestVideos.length > 0 && (
-          <MixSection icon="🔥" title="Latest from YouTube" mixes={latestVideos} />
+          <div className="mb-20">
+            <div className="flex items-center justify-between mb-2">
+               <span className="text-[10px] font-bold text-destructive tracking-[0.2em] uppercase">Audio & Visuals</span>
+            </div>
+            <MixSection icon="🔥" title="Recent Highlights" mixes={latestVideos} />
+          </div>
         )}
 
-        {/* Section 2: More Mixes (Shown if total videos > 5) */}
-        {videos.length > 5 ? (
-          <MixSection icon="🎧" title="More from our Channel" mixes={allOtherVideos} />
+        {/* Section 2: All Videos (Everything Else) */}
+        {allOtherVideos.length > 0 ? (
+          <div className="mb-20">
+            <div className="flex items-center justify-between mb-2">
+               <span className="text-[10px] font-bold text-primary tracking-[0.2em] uppercase">MP3 format ready for all</span>
+            </div>
+            <MixSection icon="🎧" title="All Videos" mixes={allOtherVideos} />
+          </div>
         ) : (
           !isLoading && videos.length > 0 && (
-            <div className="mb-12 text-center py-10 border border-dashed border-border rounded-2xl bg-secondary/10">
-              <p className="text-muted-foreground text-sm mb-4">You've reached the end of the preview. Explore our full library of {videos.length || 73} remixes.</p>
-              <Link to="/videos" className="bg-destructive text-white px-8 py-3 rounded-full font-bold text-sm shadow-lg hover:scale-105 transition-transform inline-block">
-                View Full Library (70+ Videos) →
-              </Link>
+            <div className="mb-20 text-center py-16 border border-dashed border-border rounded-[2.5rem] bg-secondary/5">
+                <p className="text-muted-foreground text-sm font-medium">
+                  You've loaded the entire library. More fire coming soon!
+                </p>
             </div>
           )
         )}
