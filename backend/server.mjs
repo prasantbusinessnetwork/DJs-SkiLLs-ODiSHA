@@ -207,7 +207,7 @@ app.get('/api/stream', (req, res) => {
   // ... (omitted for brevity in this chunk, I'll keep it as /api/stream)
 });
 
-// ─── MP3 Download (Atomic Bulletproof Strategy) ──────────────────────────────
+// ─── MP3 Download (Ironclad Hardened Strategy) ────────────────────────────────
 app.get("/api/download", downloadLimiter, async (req, res) => {
   const url = req.query.url;
   const requestedTitle = req.query.title ? String(req.query.title) : "audio";
@@ -215,122 +215,111 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
 
   if (!url) return res.status(400).json({ error: "missing_url" });
 
-  const tempId = `dl_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const tempId = `iron_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
   const rawPath = path.join(downloadsDir, `${tempId}_raw`);
   const mp3Path = path.join(downloadsDir, `${tempId}.mp3`);
   
-  console.log(`[download] Processing: ${url}`);
+  console.log(`[ironclad] Request started: ${url}`);
 
   const cookiesPath = path.join(process.cwd(), 'cookies.txt');
-  const hasCookies = fs.existsSync(cookiesPath);
+  const hasCookies = fs.existsSync(cookiesPath) && fs.statSync(cookiesPath).size > 10;
 
-  // Helper to run a shell command
-  const run = (cmd, args) => {
+  // Helper to run a command with a timeout
+  const runWithTimeout = (cmd, args, timeoutMs = 120000) => {
     return new Promise((resolve, reject) => {
-      console.log(`[exec] ${cmd} ${args.join(' ')}`);
       const proc = spawn(cmd, args);
       let stderr = '';
+      const timer = setTimeout(() => {
+        proc.kill('SIGKILL');
+        reject(new Error(`Command timed out after ${timeoutMs/1000}s`));
+      }, timeoutMs);
+
       proc.stderr.on('data', (d) => stderr += d.toString());
       proc.on('close', (code) => {
+        clearTimeout(timer);
         if (code === 0) resolve();
-        else reject(new Error(`Exit ${code}: ${stderr}`));
+        else reject(new Error(`Exit ${code}: ${stderr.trim()}`));
       });
     });
   };
 
   try {
-    // Step 1: Download RAW audio from YouTube
-    // Modern yt-dlp flags to bypass "Bot" detection
-    // Using 'ba/b' ensures we always get SOMETHING even if 'bestaudio' isn't available
-    const downloadFlags = [
-      '--no-check-certificates',
-      '--no-warnings',
-      '--no-playlist',
-      '-f', 'ba/b',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      '--extractor-args', 'youtube:player_client=web,android',
-      '--geo-bypass',
-      '-o', `${rawPath}.%(ext)s`,
-      url
+    // 3-TIER DOWNLOAD ATTEMPT
+    let success = false;
+    const attempts = [
+      { name: "Cookies + Desktop", cookies: true, client: "web,android" },
+      { name: "No Cookies + Desktop", cookies: false, client: "web,android" },
+      { name: "No Cookies + Mobile", cookies: false, client: "mweb,android" }
     ];
-    
-    // Attempt with cookies first, then without, then with a different client
-    try {
-      if (hasCookies && fs.statSync(cookiesPath).size > 10) {
-        console.log('[download] Attempting with cookies...');
-        await run('yt-dlp', ['--cookies', cookiesPath, ...downloadFlags]);
-      } else {
-        throw new Error('No valid cookies found');
-      }
-    } catch (e) {
-      console.warn(`[download] Cookie attempt failed: ${e.message}. Trying generic...`);
-      // Fallback: Use 'mweb' client
-      const fallbackFlags = [...downloadFlags];
-      fallbackFlags[10] = 'youtube:player_client=mweb,android';
-      await run('yt-dlp', fallbackFlags);
-    }
 
-    // Step 1.1: Find the actual raw file (yt-dlp adds extension)
-    const files = fs.readdirSync(downloadsDir);
-    const actualRawFile = files.find(f => f.startsWith(path.basename(rawPath)));
-    
-    if (!actualRawFile) {
-      throw new Error('Raw download failed - file not found');
-    }
-    const fullRawPath = path.join(downloadsDir, actualRawFile);
-
-    if (fs.statSync(fullRawPath).size < 1000) {
-      throw new Error('Raw file too small (corrupt)');
-    }
-
-    // Step 2: Convert to high-quality MP3 using FFmpeg
-    await run('ffmpeg', [
-      '-i', fullRawPath,
-      '-acodec', 'libmp3lame',
-      '-b:a', '192k',
-      '-ar', '44100',
-      '-y',
-      mp3Path
-    ]);
-
-    // Verify MP3 file
-    if (!fs.existsSync(mp3Path) || fs.statSync(mp3Path).size < 1000) {
-      throw new Error('Conversion failed or output empty');
-    }
-
-    const stats = fs.statSync(mp3Path);
-    console.log(`[download] Success: ${stats.size} bytes`);
-
-    // Step 3: Serve the file
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Length", stats.size);
-    res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"`);
-    
-    const stream = fs.createReadStream(mp3Path);
-    stream.pipe(res);
-
-    stream.on('end', () => {
-      // Cleanup
+    for (const attempt of attempts) {
+      if (attempt.cookies && !hasCookies) continue;
+      
+      console.log(`[ironclad] Attempting: ${attempt.name}`);
       try {
-        if (fs.existsSync(fullRawPath)) fs.unlinkSync(fullRawPath);
-        if (fs.existsSync(mp3Path)) fs.unlinkSync(mp3Path);
-      } catch (e) {}
+        const flags = [
+          '--no-check-certificates', '--no-warnings', '--no-playlist',
+          '-f', 'ba/b',
+          '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          '--extractor-args', `youtube:player_client=${attempt.client}`,
+          '-o', `${rawPath}.%(ext)s`,
+          url
+        ];
+        if (attempt.cookies) flags.unshift('--cookies', cookiesPath);
+        
+        await runWithTimeout('yt-dlp', flags);
+        
+        // Find the file
+        const files = fs.readdirSync(downloadsDir);
+        const actualFile = files.find(f => f.startsWith(path.basename(rawPath)));
+        if (actualFile && fs.statSync(path.join(downloadsDir, actualFile)).size > 5000) {
+          const fullPath = path.join(downloadsDir, actualFile);
+          // If extension isn't .mp3, convert it properly
+          await runWithTimeout('ffmpeg', [
+            '-i', fullPath,
+            '-acodec', 'libmp3lame', '-b:a', '192k', '-ar', '44100',
+            '-id3v2_version', '3', '-y', mp3Path
+          ]);
+          
+          if (fs.existsSync(mp3Path) && fs.statSync(mp3Path).size > 10000) {
+            success = true;
+            if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+            break;
+          }
+        }
+      } catch (e) {
+        console.warn(`[ironclad] ${attempt.name} failed: ${e.message}`);
+        // Cleanup attempt files
+        const files = fs.readdirSync(downloadsDir);
+        files.filter(f => f.startsWith(path.basename(rawPath))).forEach(f => fs.unlinkSync(path.join(downloadsDir, f)));
+      }
+    }
+
+    if (!success) throw new Error("All download attempts failed. YouTube might be blocking the server.");
+
+    // SERVE THE PERFECT MP3
+    const finalStats = fs.statSync(mp3Path);
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Content-Length", finalStats.size);
+    res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"`);
+    res.setHeader("Cache-Control", "public, max-age=3600");
+
+    const reader = fs.createReadStream(mp3Path);
+    reader.pipe(res);
+    reader.on('end', () => {
+      fs.unlink(mp3Path, () => {});
     });
 
   } catch (err) {
-    console.error(`[download] ERROR: ${err.message}`);
-    // Cleanup on error: Need to find the raw file again if it exists
+    console.error(`[ironclad] CRITICAL ERROR: ${err.message}`);
+    if (!res.headersSent) {
+      res.status(500).send(`Ironclad Error: ${err.message}`);
+    }
+    // Final cleanup
     try {
       const files = fs.readdirSync(downloadsDir);
-      const rawFiles = files.filter(f => f.startsWith(tempId));
-      for (const f of rawFiles) {
-        fs.unlinkSync(path.join(downloadsDir, f));
-      }
+      files.filter(f => f.startsWith(tempId)).forEach(f => fs.unlinkSync(path.join(downloadsDir, f)));
     } catch (e) {}
-    
-    if (!res.headersSent) {
-      res.status(500).send(`Error: ${err.message}`);
-    }
   }
 });
 
