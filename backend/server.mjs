@@ -136,8 +136,8 @@ async function fetchFullChannelVideos(apiKey, channelId, limit = 500) {
 }
 
 app.get('/api/latest', async (req, res) => {
-  const API_KEY = process.env.YOUTUBE_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
-  const CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID;
+  const API_KEY = process.env.YOUTUBE_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || "AIzaSyBSPbc6qQtGvjqtj20r7oWpXcCdXfUfsro";
+  const CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || "UC8FEwv0WXF5db-pIs8uJkag";
 
   if (!API_KEY || !CHANNEL_ID) {
     console.warn("[latest] Missing API Key/ID. Sending fallbacks.");
@@ -153,8 +153,8 @@ app.get('/api/latest', async (req, res) => {
 });
 
 app.get('/api/videos', async (req, res) => {
-  const API_KEY = process.env.YOUTUBE_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
-  const CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID;
+  const API_KEY = process.env.YOUTUBE_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || "AIzaSyBSPbc6qQtGvjqtj20r7oWpXcCdXfUfsro";
+  const CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || "UC8FEwv0WXF5db-pIs8uJkag";
 
   if (!API_KEY || !CHANNEL_ID) {
     return res.json(fallbackVideos);
