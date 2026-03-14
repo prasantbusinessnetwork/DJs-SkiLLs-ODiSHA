@@ -335,10 +335,26 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
   }
 });
 
-app.get('/api/debug-download', (req, res) => {
-  exec('yt-dlp --version && ffmpeg -version | head -n 1', (err, stdout) => {
-    res.send(`Queue: ${activeDownloads}/${MAX_CONCURRENT_DOWNLOADS}\nCWD: ${process.cwd()}\n${stdout}`);
-  });
+app.get('/api/debug-download', async (req, res) => {
+  try {
+    const hasCookies = fs.existsSync(cookiesPath) ? `${fs.statSync(cookiesPath).size} bytes` : 'Not Found';
+    const { stdout: pipOut } = await execPromise('pip list | grep bgutil || echo "Not Installed"');
+    const { stdout: toolsOut } = await execPromise('yt-dlp --version && ffmpeg -version | head -n 1');
+    const { stdout: diskOut } = await execPromise('df -h /tmp | tail -n 1');
+    
+    res.setHeader('Content-Type', 'text/plain');
+    res.write(`Ironclad Debug Info\n`);
+    res.write(`-------------------\n`);
+    res.write(`Queue: ${activeDownloads}/${MAX_CONCURRENT_DOWNLOADS}\n`);
+    res.write(`CWD: ${process.cwd()}\n`);
+    res.write(`Cookies: ${hasCookies}\n`);
+    res.write(`bgutil: ${pipOut.trim()}\n`);
+    res.write(`Disk /tmp: ${diskOut.trim()}\n`);
+    res.write(`Tools:\n${toolsOut.trim()}\n`);
+    res.end();
+  } catch (e) {
+    res.status(500).send(`Debug Error: ${e.message}`);
+  }
 });
 
 app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
