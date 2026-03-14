@@ -27,11 +27,15 @@ export async function fetchLatestVideos(maxResults = 5): Promise<YouTubeVideo[]>
 
 export async function fetchAllVideos(maxResults = 500): Promise<YouTubeVideo[]> {
   try {
+    console.log(`[YouTube] Fetching from: ${API}/api/videos`);
     const res = await fetch(`${API}/api/videos`);
     
     if (res.ok) {
       const data = await res.json();
+      console.log(`[YouTube] Successfully fetched ${data.length} videos`);
       return Array.isArray(data) ? data : [];
+    } else {
+      console.error(`[YouTube] API returned error: ${res.status} ${res.statusText}`);
     }
   } catch (e) {
     console.error("All videos fetch failed:", e);

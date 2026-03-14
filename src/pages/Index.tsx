@@ -135,15 +135,15 @@ const Index = () => {
           <MixSection icon="🔥" title="Latest from YouTube" mixes={latestVideos} />
         )}
 
-        {/* Section 2: All Other Videos (The rest of the channel) */}
-        {allOtherVideos.length > 0 ? (
-          <MixSection icon="🎧" title="All Videos" mixes={allOtherVideos} />
+        {/* Section 2: More Mixes (Shown if total videos > 5) */}
+        {videos.length > 5 ? (
+          <MixSection icon="🎧" title="More from our Channel" mixes={allOtherVideos} />
         ) : (
-          !isLoading && videos.length > 0 && videos.length <= 5 && (
-            <div className="mb-12 text-center py-8 border border-dashed border-border rounded-xl">
-              <p className="text-muted-foreground text-sm">More videos available in our full library.</p>
-              <Link to="/videos" className="text-destructive font-bold mt-2 inline-block hover:underline">
-                View Channel Library →
+          !isLoading && videos.length > 0 && (
+            <div className="mb-12 text-center py-10 border border-dashed border-border rounded-2xl bg-secondary/10">
+              <p className="text-muted-foreground text-sm mb-4">You've reached the end of the preview. Explore our full library of {videos.length || 73} remixes.</p>
+              <Link to="/videos" className="bg-destructive text-white px-8 py-3 rounded-full font-bold text-sm shadow-lg hover:scale-105 transition-transform inline-block">
+                View Full Library (70+ Videos) →
               </Link>
             </div>
           )
