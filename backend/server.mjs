@@ -380,50 +380,60 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
     }
 
     if (!success) {
-      console.log('[ironclad] Local tiers failed. Activating Verified Triple Safety Net (Tiers 6-8)...');
+      console.log('[ironclad] Local tiers failed. Activating Zero-Menu Safety Net (Ironclad 3.3)...');
       const videoId = url.match(/[?&]v=([^&#]+)/)?.[1] || url;
       
-      const fallbacks = [
-        { name: "Cobalt (Ultra-Reliable)", url: `https://cobalt.tools/api/json`, payload: { url: `https://www.youtube.com/watch?v=${videoId}`, audioOnly: true, aFormat: "mp3" }, type: "api" },
-        { name: "Y3-Engine", url: `https://api.yt-download.org/v1/button/mp3/${videoId}`, type: "redirect" },
-        { name: "Invidious-Global", url: `https://invidious.snopyta.org/latest_version?id=${videoId}&itag=140`, type: "redirect" }
+      const cobaltInstances = [
+        "https://cobalt.tools/api/json",
+        "https://co.wuk.sh/api/json",
+        "https://api.cobalt.tools/api/json"
       ];
 
-      for (const f of fallbacks) {
+      // Step 1: Try Cobalt Instances (Direct API)
+      for (const instance of cobaltInstances) {
         try {
-          console.log(`[ironclad] Safety Net Check: ${f.name}`);
-          
-          if (f.type === "api") {
-            // Cobalt needs a POST request and returns a JSON with the URL
-            const cobResponse = await fetch(f.url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-              body: JSON.stringify(f.payload)
-            });
-            if (cobResponse.ok) {
-              const cobData = await cobResponse.json();
-              if (cobData.url) {
-                console.log(`[ironclad] Cobalt SUCCESS. Redirecting to: ${cobData.url}`);
-                return res.redirect(cobData.url);
-              }
-            }
-          } else {
-            // Simple redirect fallback - we do a quick HEAD check to see if it's alive
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 3000);
-            const check = await fetch(f.url, { method: 'HEAD', signal: controller.signal }).catch(() => ({ ok: false }));
-            clearTimeout(timeout);
-            
-            if (check.ok || check.status === 302 || check.status === 405) { // 405 often returned for HEAD
-              console.log(`[ironclad] Safety Net ${f.name} is ALIVE. Redirecting.`);
-              return res.redirect(f.url);
+          console.log(`[ironclad] Safety Net Check: Cobalt (${instance})`);
+          const cobResponse = await fetch(instance, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, audioOnly: true, aFormat: "mp3" })
+          });
+          if (cobResponse.ok) {
+            const cobData = await cobResponse.json();
+            if (cobData.url) {
+              console.log(`[ironclad] Ironclad 3.3 Success. Redirecting to direct file.`);
+              return res.redirect(cobData.url);
             }
           }
         } catch (err) {
-          console.warn(`[ironclad] Safety Net ${f.name} check failed: ${err.message}`);
+          console.warn(`[ironclad] Cobalt instance ${instance} failed.`);
         }
       }
-      throw new Error("All Safety Nets (local and external) are currently unavailable.");
+
+      // Step 2: Try Verified Direct Redirects
+      const redirects = [
+        { name: "Y3-Engine", url: `https://api.yt-download.org/v1/button/mp3/${videoId}` },
+        { name: "Direct-M", url: `https://yt-meta.com/api/v1/download?url=https://www.youtube.com/watch?v=${videoId}&format=mp3` }
+      ];
+
+      for (const r of redirects) {
+        try {
+          console.log(`[ironclad] Safety Net Check: ${r.name}`);
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 2500);
+          const check = await fetch(r.url, { method: 'HEAD', signal: controller.signal }).catch(() => ({ ok: false }));
+          clearTimeout(timeout);
+          
+          if (check.ok || check.status === 302 || check.status === 405) {
+            console.log(`[ironclad] Safety Net ${r.name} is ALIVE. Redirecting.`);
+            return res.redirect(r.url);
+          }
+        } catch (err) {
+          console.warn(`[ironclad] Redirect ${r.name} failed.`);
+        }
+      }
+
+      throw new Error("Extreme Block Detected. All 8 Tiers (local and external) are currently blocked by YouTube.");
     }
 
     // SERVE THE PERFECT MP3
