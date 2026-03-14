@@ -76,21 +76,25 @@ verifyTools();
 if (process.env.YOUTUBE_COOKIES) {
   try {
     const cookiesPath = path.join(process.cwd(), 'cookies.txt');
-    // Save string format exactly as passed from env to cookies.txt, handles docker/cloud escaping
-    let cookieData = process.env.YOUTUBE_COOKIES;
+    // SANITIZER: Handles quotes, double-indexing, and cloud escaping
+    let cookieData = process.env.YOUTUBE_COOKIES.trim();
+    
+    // Remove wrapping quotes if user accidentally included them
+    if (cookieData.startsWith('"') && cookieData.endsWith('"')) {
+      cookieData = cookieData.substring(1, cookieData.length - 1);
+    }
+    
     if (cookieData.includes('\\n')) {
       cookieData = cookieData.replace(/\\n/g, '\n');
     }
     cookieData = cookieData.trim();
 
-    if (cookieData && cookieData.length > 50) { // Basic sanity check
+    if (cookieData && cookieData.length > 50) {
       fs.writeFileSync(cookiesPath, cookieData, { encoding: 'utf8', mode: 0o644 });
-      console.log(`[server] Startup: Wrote YOUTUBE_COOKIES to cookies.txt (${cookieData.length} bytes)`);
-    } else {
-      console.warn('[server] Startup: YOUTUBE_COOKIES env var is too short or empty.');
+      console.log(`[server] Startup: Cookies Sanitized & Written (${cookieData.length} bytes)`);
     }
   } catch (e) {
-    console.error('[server] Startup: Failed to write cookies:', e);
+    console.error('[server] Startup: Cookie Sanitizer Failed:', e);
   }
 }
 
@@ -370,7 +374,28 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
       }
     }
 
-    if (!success) throw new Error(`YouTube Block Detected. Final Tool Error: ${lastError}`);
+    if (!success) {
+      console.log('[ironclad] Local tiers failed. Activating Tier 6: Universal Safety Net (External API)');
+      try {
+        // We use a reliable public fallback that works regardless of server IP blocks
+        const videoId = url.match(/[?&]v=([^&#]+)/)?.[1] || url;
+        const fallbackUrl = `https://api.vevioz.com/api/button/mp3/${videoId}`;
+        console.log(`[ironclad] Redirecting/Fetching from Safety Net: ${fallbackUrl}`);
+        
+        // Use node-fetch to pipe the external MP3 if possible, or just redirect
+        const externalResponse = await fetch(fallbackUrl);
+        if (externalResponse.ok) {
+           console.log('[ironclad] Universal Safety Net ACTIVE. Streaming external MP3.');
+           res.setHeader("Content-Type", "audio/mpeg");
+           res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"`);
+           externalResponse.body.pipe(res);
+           return; // SUCCESS EXIT
+        }
+        throw new Error("Safety Net also rejected the request.");
+      } catch (fallbackError) {
+        throw new Error(`YouTube Block Detected across all 6 Tiers. Final Tool Error: ${lastError}`);
+      }
+    }
 
     // SERVE THE PERFECT MP3
     const finalStats = fs.statSync(mp3Path);
@@ -386,14 +411,15 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
     });
 
   } catch (err) {
-    console.error(`[ironclad] CRITICAL ERROR: ${err.message}`);
+    console.error(`[ironclad] CRITICAL FAILURE: ${err.message}`);
     if (!res.headersSent) {
       res.status(500).json({ 
-      error: "ironclad_failed_all_tiers", 
-      message: err.message,
-      tip: "Please check your YOUTUBE_COOKIES and ensure you have updated the PO-Token if required." 
-    });
-  }
+        error: "ironclad_ultimate_block", 
+        message: err.message,
+        tip: "CRITICAL: YouTube has blocked the server. STEPS TO FIX: 1. Update YOUTUBE_COOKIES in Railway. 2. Visit https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp for PO-Token generation. 3. Try again in 10 minutes.",
+        api_debug: "/api/debug-download"
+      });
+    }
     // Final cleanup
     try {
       const files = fs.readdirSync(downloadsDir);
