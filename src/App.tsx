@@ -11,15 +11,17 @@ import AllVideos from "./pages/AllVideos";
 import NotFound from "./pages/NotFound";
 
 import { useEffect } from "react";
-import { getApiBase } from "./lib/utils";
 
 const queryClient = new QueryClient();
 
 const App = () => {
   // Keep-alive ping to Railway
   useEffect(() => {
+    const apiBase = import.meta.env.VITE_API_URL;
+    if (!apiBase) return;
+
     const ping = () => {
-      fetch(`${getApiBase()}/api/health`).catch(() => {});
+      fetch(`${apiBase}/health`).catch(() => {});
     };
     ping();
     const interval = setInterval(ping, 1000 * 60 * 10); // Every 10 mins

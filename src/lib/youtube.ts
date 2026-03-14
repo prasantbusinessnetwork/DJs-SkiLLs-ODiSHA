@@ -8,6 +8,8 @@ export interface YouTubeVideo {
   videoId: string;
   thumbnail: string;
   publishedAt: string;
+}
+
 export async function fetchLatestVideos(maxResults = 5): Promise<YouTubeVideo[]> {
   try {
     const res = await fetch(`${API}/api/latest`);
@@ -21,6 +23,8 @@ export async function fetchLatestVideos(maxResults = 5): Promise<YouTubeVideo[]>
   }
 
   return [];
+}
+
 export async function fetchAllVideos(maxResults = 500): Promise<YouTubeVideo[]> {
   try {
     const res = await fetch(`${API}/api/videos`);
