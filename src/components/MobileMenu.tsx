@@ -1,4 +1,4 @@
-import { MoreVertical, Home, Info, ShieldAlert, Mail } from "lucide-react";
+import { Menu, Home, Info, ShieldAlert, Mail } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +13,7 @@ const MobileMenu = () => {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="flex h-10 w-10 items-center justify-center rounded-full bg-background/20 backdrop-blur-md border border-white/10 text-foreground transition-all hover:bg-background/40">
-            <MoreVertical className="h-5 w-5" />
+            <Menu className="h-5 w-5" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56 bg-zinc-900/95 border-zinc-800 text-foreground backdrop-blur-xl p-2 rounded-2xl">
