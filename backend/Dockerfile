@@ -2,7 +2,7 @@ FROM node:18
 
 RUN apt-get update && apt-get install -y ffmpeg python3 python3-pip
 
-RUN pip install -U https://github.com/yt-dlp/yt-dlp/archive/master.tar.gz
+RUN pip install --break-system-packages -U https://github.com/yt-dlp/yt-dlp/archive/master.tar.gz
 
 # ── Verify tools ─────────────────────────────────────────────────────────────
 RUN yt-dlp --version && ffmpeg -version | head -1
