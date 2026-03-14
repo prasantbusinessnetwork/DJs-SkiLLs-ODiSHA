@@ -380,25 +380,50 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
     }
 
     if (!success) {
-      console.log('[ironclad] Local tiers failed. Activating Triple Safety Net (Tiers 6-8)...');
+      console.log('[ironclad] Local tiers failed. Activating Verified Triple Safety Net (Tiers 6-8)...');
       const videoId = url.match(/[?&]v=([^&#]+)/)?.[1] || url;
       
       const fallbacks = [
-        { name: "Backup-A", url: `https://api.vevioz.com/api/button/mp3/${videoId}` },
-        { name: "Backup-B", url: `https://www.yt-download.org/api/button/mp3/${videoId}` },
-        { name: "Backup-C", url: `https://invidious.snopyta.org/latest_version?id=${videoId}&itag=140` }
+        { name: "Cobalt (Ultra-Reliable)", url: `https://cobalt.tools/api/json`, payload: { url: `https://www.youtube.com/watch?v=${videoId}`, audioOnly: true, aFormat: "mp3" }, type: "api" },
+        { name: "Y3-Engine", url: `https://api.yt-download.org/v1/button/mp3/${videoId}`, type: "redirect" },
+        { name: "Invidious-Global", url: `https://invidious.snopyta.org/latest_version?id=${videoId}&itag=140`, type: "redirect" }
       ];
 
       for (const f of fallbacks) {
         try {
-          console.log(`[ironclad] Safety Net Attempt: ${f.name}`);
-          // Use redirect instead of piping if the server is under heavy load
-          return res.redirect(f.url); 
+          console.log(`[ironclad] Safety Net Check: ${f.name}`);
+          
+          if (f.type === "api") {
+            // Cobalt needs a POST request and returns a JSON with the URL
+            const cobResponse = await fetch(f.url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+              body: JSON.stringify(f.payload)
+            });
+            if (cobResponse.ok) {
+              const cobData = await cobResponse.json();
+              if (cobData.url) {
+                console.log(`[ironclad] Cobalt SUCCESS. Redirecting to: ${cobData.url}`);
+                return res.redirect(cobData.url);
+              }
+            }
+          } else {
+            // Simple redirect fallback - we do a quick HEAD check to see if it's alive
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 3000);
+            const check = await fetch(f.url, { method: 'HEAD', signal: controller.signal }).catch(() => ({ ok: false }));
+            clearTimeout(timeout);
+            
+            if (check.ok || check.status === 302 || check.status === 405) { // 405 often returned for HEAD
+              console.log(`[ironclad] Safety Net ${f.name} is ALIVE. Redirecting.`);
+              return res.redirect(f.url);
+            }
+          }
         } catch (err) {
-          console.warn(`[ironclad] Safety Net ${f.name} failed.`);
+          console.warn(`[ironclad] Safety Net ${f.name} check failed: ${err.message}`);
         }
       }
-      throw new Error("All Safety Nets exhausted.");
+      throw new Error("All Safety Nets (local and external) are currently unavailable.");
     }
 
     // SERVE THE PERFECT MP3
