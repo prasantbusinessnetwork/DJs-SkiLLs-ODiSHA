@@ -2,6 +2,7 @@ import profileCutout from "@/assets/profile-cutout.png";
 import skillLogo from "@/assets/skill-logo.png";
 import { MapPin, User, Music, Youtube, Headphones, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
+import MobileMenu from "@/components/MobileMenu";
 
 const AboutUs = () => {
   return (
@@ -11,12 +12,15 @@ const AboutUs = () => {
         <Link to="/">
           <img src={skillLogo} alt="SKILL" className="h-5 sm:h-6 lg:h-7 w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]" />
         </Link>
-        <Link
-          to="/"
-          className="text-sm font-medium tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-        >
-          ← BACK TO HOME
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            to="/"
+            className="hidden sm:block text-sm font-medium tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+          >
+            ← BACK TO HOME
+          </Link>
+          <MobileMenu />
+        </div>
       </header>
 
       {/* Hero Banner */}

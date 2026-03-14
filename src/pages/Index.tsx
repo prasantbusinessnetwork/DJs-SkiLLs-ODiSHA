@@ -7,6 +7,7 @@ import { Link } from "react-router-dom";
 import { useYouTubeVideos } from "@/hooks/useYouTubeVideos";
 import LatestVideosGrid from "@/components/LatestVideosGrid";
 import { useIsMobile } from "@/hooks/use-mobile";
+import MobileMenu from "@/components/MobileMenu";
 
 const navLinks = [
   { label: "HOME", to: "/" },
@@ -61,9 +62,10 @@ const Index = () => {
           <div className="absolute inset-0 bg-background/60" />
         </div>
 
-        {/* Navigation */}
         <header className="relative z-10 flex items-center justify-between px-4 py-4 sm:px-8 sm:py-6 lg:px-16">
           <img src={skillLogo} alt="SKILL" className="h-5 sm:h-6 lg:h-7 w-auto object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.3)]" />
+          
+          {/* Desktop Nav */}
           <nav className="hidden gap-8 md:flex">
             {navLinks.map((link) =>
               link.to.startsWith("/") ? (
@@ -85,6 +87,9 @@ const Index = () => {
               )
             )}
           </nav>
+
+          {/* Mobile Nav (3 Dots) */}
+          <MobileMenu />
         </header>
 
         {/* Hero Content */}

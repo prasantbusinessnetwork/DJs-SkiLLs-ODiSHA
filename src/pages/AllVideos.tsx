@@ -3,6 +3,7 @@ import { useYouTubeVideos } from "@/hooks/useYouTubeVideos";
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import LazyImage from "@/components/LazyImage";
+import MobileMenu from "@/components/MobileMenu";
 
 import { YouTubeVideo } from "@/lib/youtube";
 import { toast } from "sonner";
@@ -209,15 +210,18 @@ const AllVideos = () => {
           </p>
         </div>
 
-        <div className="w-full sm:w-72 relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search by title, artist, tag..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="w-full rounded-full border border-border bg-card/60 px-9 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/60 focus-visible:ring-offset-0"
-          />
+        <div className="flex items-center gap-4">
+          <MobileMenu />
+          <div className="w-full sm:w-72 relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full rounded-full border border-border bg-card/60 px-9 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/60 focus-visible:ring-offset-0"
+            />
+          </div>
         </div>
       </header>
 
