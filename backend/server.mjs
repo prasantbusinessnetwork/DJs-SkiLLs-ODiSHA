@@ -201,45 +201,59 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
   res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"`);
   res.setHeader("Transfer-Encoding", "chunked");
 
-  const cookiesPath = path.join(process.cwd(), 'cookies.txt');
-  const cookiesFlag = fs.existsSync(cookiesPath) ? ["--cookies", cookiesPath] : [];
-
-  // Use SPAWN for streaming - no local file storage needed (unlimited downloads possible)
-  // Flags: -x (extract audio), -f ba (best audio), -o - (stdout)
+  // Use SPAWN for streaming - no local file storage needed
+  // yt-dlp: extract best audio and pipe to stdout
   const ytdlp = spawn('yt-dlp', [
-    '-x',
-    '--audio-format', 'mp3',
-    '--audio-quality', '0',
-    '--no-warnings',
     '-f', 'bestaudio',
+    '--no-warnings',
     ...cookiesFlag,
     '--extractor-args', 'youtube:player_client=android,ios',
     '-o', '-',
     url
   ]);
 
-  // Convert stdout directly to response
-  ytdlp.stdout.pipe(res);
+  // ffmpeg: take yt-dlp output from stdin and convert to standard MP3 for stdout
+  const ffmpeg = spawn('ffmpeg', [
+    '-i', 'pipe:0',
+    '-f', 'mp3',
+    '-acodec', 'libmp3lame',
+    '-ab', '192k',
+    '-ar', '44100',
+    'pipe:1'
+  ]);
 
-  let errorLog = '';
-  ytdlp.stderr.on('data', (data) => {
-    errorLog += data.toString();
-  });
+  // Pipe yt-dlp into ffmpeg
+  ytdlp.stdout.pipe(ffmpeg.stdin);
+  // Pipe ffmpeg output to response
+  ffmpeg.stdout.pipe(res);
+
+  let ytdlpError = '';
+  ytdlp.stderr.on('data', (data) => ytdlpError += data.toString());
+  
+  let ffmpegError = '';
+  ffmpeg.stderr.on('data', (data) => ffmpegError += data.toString());
+
+  const cleanup = () => {
+    ytdlp.kill('SIGTERM');
+    ffmpeg.kill('SIGTERM');
+  };
 
   ytdlp.on('close', (code) => {
     if (code !== 0) {
-      console.error(`[download] yt-dlp failed (code ${code}): ${errorLog}`);
-      // If headers haven't been sent, we could send an error, but with streaming it's usually too late
-      if (!res.headersSent) res.status(500).json({ error: "download_failed" });
+      console.error(`[download] yt-dlp failed (code ${code}): ${ytdlpError}`);
+    }
+  });
+
+  ffmpeg.on('close', (code) => {
+    if (code !== 0 && code !== null) {
+      console.error(`[download] ffmpeg failed (code ${code}): ${ffmpegError}`);
     } else {
       console.log(`[download] Completed: ${safeTitle}`);
     }
   });
 
-  // If user cancels request, kill process
-  req.on('close', () => {
-    ytdlp.kill('SIGTERM');
-  });
+  // If user cancels request, kill processes
+  req.on('close', cleanup);
 });
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
