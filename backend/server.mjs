@@ -45,13 +45,24 @@ if (!fs.existsSync(downloadsDir)) {
   }
 }
 
-// ─── Tool Verification ────────────────────────────────────────────────────────
+// ─── Tool Verification & Auto-Update ─────────────────────────────────────────
 async function verifyTools() {
   try {
     const { stdout: ytdlpPath } = await execPromise('which yt-dlp || where yt-dlp').catch(() => ({ stdout: 'not found' }));
     const { stdout: ffmpegPath } = await execPromise('which ffmpeg || where ffmpeg').catch(() => ({ stdout: 'not found' }));
     console.log(`[server] Tool check: yt-dlp -> ${ytdlpPath.trim()}, ffmpeg -> ${ffmpegPath.trim()}`);
     
+    // Attempt automatic update for yt-dlp on startup (Crucial for bypasses)
+    if (!ytdlpPath.includes('not found')) {
+      console.log('[server] Attempting yt-dlp update...');
+      try {
+        await execPromise('yt-dlp -U');
+        console.log('[server] yt-dlp update check complete.');
+      } catch(ue) {
+        console.warn('[server] yt-dlp update failed (likely permission issue):', ue.message);
+      }
+    }
+
     if (ytdlpPath.includes('not found') || ffmpegPath.includes('not found')) {
       console.warn('[server] WARNING: Tools not found in path! Download may fail.');
     }
@@ -65,11 +76,18 @@ verifyTools();
 if (process.env.YOUTUBE_COOKIES) {
   try {
     const cookiesPath = path.join(process.cwd(), 'cookies.txt');
-    // Save string format exactly as passed from env to cookies.txt
-    const cookieData = process.env.YOUTUBE_COOKIES.replace(/\\n/g, '\n').trim();
-    if (cookieData) {
-      fs.writeFileSync(cookiesPath, cookieData);
-      console.log('[server] Startup: Wrote YOUTUBE_COOKIES to cookies.txt');
+    // Save string format exactly as passed from env to cookies.txt, handles docker/cloud escaping
+    let cookieData = process.env.YOUTUBE_COOKIES;
+    if (cookieData.includes('\\n')) {
+      cookieData = cookieData.replace(/\\n/g, '\n');
+    }
+    cookieData = cookieData.trim();
+
+    if (cookieData && cookieData.length > 50) { // Basic sanity check
+      fs.writeFileSync(cookiesPath, cookieData, { encoding: 'utf8', mode: 0o644 });
+      console.log(`[server] Startup: Wrote YOUTUBE_COOKIES to cookies.txt (${cookieData.length} bytes)`);
+    } else {
+      console.warn('[server] Startup: YOUTUBE_COOKIES env var is too short or empty.');
     }
   } catch (e) {
     console.error('[server] Startup: Failed to write cookies:', e);
@@ -283,10 +301,11 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
     try { await runWithTimeout('yt-dlp', ['--rm-cache-dir']); } catch(e) {}
 
     const attempts = [
-      { name: "Cookies + TV Mode (Highly Stable)", cookies: true, client: "tv,web" },
-      { name: "Cookies + Mobile (Stealth)", cookies: true, client: "android,ios" },
+      { name: "Cookies + TV Client (High Trust)", cookies: true, client: "tv,web" },
+      { name: "Cookies + iOS Client (Stealth)", cookies: true, client: "ios,web" },
+      { name: "Cookies + Android Client (Mobile)", cookies: true, client: "android,web" },
       { name: "No Cookies + TV Mode (Fallback)", cookies: false, client: "tv,web" },
-      { name: "No Cookies + Embedded (Fallback 2)", cookies: false, client: "tv_embedded,web" },
+      { name: "No Cookies + Embedded (Secondary)", cookies: false, client: "tv_embedded,web" },
       { name: "No Cookies + Mobile (Final Stand)", cookies: false, client: "mweb,android" }
     ];
 
@@ -306,8 +325,18 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
           '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
           '--extractor-args', `youtube:player_client=${attempt.client}`,
           '-o', `${rawPath}.%(ext)s`,
-          url
         ];
+
+        // PO-Token Support (YouTube's latest requirement)
+        if (process.env.YOUTUBE_PO_TOKEN) {
+          flags.push('--extractor-args', `youtube:po_token=${process.env.YOUTUBE_PO_TOKEN}`);
+          if (process.env.YOUTUBE_VISITOR_DATA) {
+             flags.push('--extractor-args', `youtube:visitor_data=${process.env.YOUTUBE_VISITOR_DATA}`);
+          }
+        }
+
+        flags.push(url);
+
         if (attempt.cookies) flags.unshift('--cookies', cookiesPath);
         
         await runWithTimeout('yt-dlp', flags, 90000);
@@ -359,14 +388,34 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
   } catch (err) {
     console.error(`[ironclad] CRITICAL ERROR: ${err.message}`);
     if (!res.headersSent) {
-      res.status(500).send(`Ironclad Error: ${err.message}`);
-    }
+      res.status(500).json({ 
+      error: "ironclad_failed_all_tiers", 
+      message: err.message,
+      tip: "Please check your YOUTUBE_COOKIES and ensure you have updated the PO-Token if required." 
+    });
+  }
     // Final cleanup
     try {
       const files = fs.readdirSync(downloadsDir);
       files.filter(f => f.startsWith(tempId)).forEach(f => fs.unlinkSync(path.join(downloadsDir, f)));
     } catch (e) {}
   }
+});
+
+// ─── Debug API (Identify Blocks) ─────────────────────────────────────────────
+app.get('/api/debug-download', (req, res) => {
+  // This helps identify if the server IP itself is flagged
+  res.setHeader('Content-Type', 'text/plain');
+  res.write(`Server Time: ${new Date().toISOString()}\n`);
+  res.write(`OS: ${process.platform}\n`);
+  res.write(`Downloads Dir: ${downloadsDir}\n`);
+  res.write(`Cookies Found: ${fs.existsSync(path.join(process.cwd(), 'cookies.txt'))}\n\n`);
+  
+  exec('yt-dlp --version && ffmpeg -version | head -n 1', (err, stdout, stderr) => {
+    res.write(`Tool Versions:\n${stdout}\n`);
+    if (err) res.write(`Error: ${stderr}\n`);
+    res.end();
+  });
 });
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
