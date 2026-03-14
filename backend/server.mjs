@@ -110,7 +110,14 @@ app.get('/', (_req, res) => {
   res.send('Backend running');
 });
 
-// ─── Videos (Dynamic YouTube API Fetch) ───────────────────────────────────────
+// ─── Videos (Dynamic YouTube API Fetch with Cache) ────────────────────────────
+const videoCache = {
+  data: null,
+  lastFetched: 0,
+  isFetching: false,
+  TTL: 60 * 60 * 1000, // 1 Hour cache
+};
+
 const fallbackVideos = [
   { title: "Aaj Ki Raat (Remix)", artist: "DJs SkILLs ODISHA X Exzost", tag: "Latest", youtubeUrl: "https://www.youtube.com/watch?v=KsJ2-7cWTyg", videoId: "KsJ2-7cWTyg", thumbnail: "https://img.youtube.com/vi/KsJ2-7cWTyg/mqdefault.jpg" },
   { title: "Tum Toh Dhokebaaz Ho", artist: "DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=uYTeGgKheFw", videoId: "uYTeGgKheFw", thumbnail: "https://img.youtube.com/vi/uYTeGgKheFw/mqdefault.jpg" },
@@ -119,25 +126,23 @@ const fallbackVideos = [
   { title: "Illuminati (Remix)", artist: "Visual DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=hK651bev0uI", videoId: "hK651bev0uI", thumbnail: "https://img.youtube.com/vi/hK651bev0uI/mqdefault.jpg" },
 ];
 
-// Helper to fetch ALL videos from channel using pagination
+// Helper to fetch ALL videos from channel with safety
 async function fetchFullChannelVideos(apiKey, channelId, limit = 500) {
   let videos = [];
   let nextPageToken = "";
+  let pageCount = 0;
   
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-
-    while (videos.length < limit) {
+    console.log(`[youtube] Starting full fetch for channel: ${channelId}`);
+    
+    while (videos.length < limit && pageCount < 10) { 
+      pageCount++;
       const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&maxResults=50&type=video&key=${apiKey}${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`;
       
-      const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      
+      const response = await fetch(url);
       if (!response.ok) {
-        const errText = await response.text();
-        console.error(`[youtube] API error: ${errText}`);
-        break;
+        const err = await response.json();
+        throw new Error(err.error?.message || "YouTube API error");
       }
 
       const data = await response.json();
@@ -153,7 +158,7 @@ async function fetchFullChannelVideos(apiKey, channelId, limit = 500) {
           tag: "Remix",
           youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
           videoId,
-          thumbnail: snippet.thumbnails?.medium?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
+          thumbnail: snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
           publishedAt: snippet.publishedAt,
         };
       }).filter(v => v !== null);
@@ -163,9 +168,13 @@ async function fetchFullChannelVideos(apiKey, channelId, limit = 500) {
 
       if (!nextPageToken) break;
     }
-    return videos;
+
+    // Remove duplicates
+    const uniqueVideos = Array.from(new Map(videos.map(v => [v.videoId, v])).values());
+    console.log(`[youtube] Fetch complete. Unique videos: ${uniqueVideos.length}`);
+    return uniqueVideos;
   } catch (error) {
-    console.error("[youtube] Fetch Error:", error);
+    console.error("[youtube] Fetch Error:", error.message);
     return [];
   }
 }
@@ -174,31 +183,53 @@ app.get('/api/latest', async (req, res) => {
   const API_KEY = process.env.YOUTUBE_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || "AIzaSyBSPbc6qQtGvjqtj20r7oWpXcCdXfUfsro";
   const CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || "UC8FEwv0WXF5db-pIs8uJkag";
 
-  if (!API_KEY || !CHANNEL_ID) {
-    console.warn("[latest] Missing API Key/ID. Sending fallbacks.");
-    return res.json(fallbackVideos.slice(0, 5));
+  // Check cache first
+  const now = Date.now();
+  if (videoCache.data && (now - videoCache.lastFetched < videoCache.TTL)) {
+    return res.json(videoCache.data.slice(0, 5).map((v, i) => ({ ...v, tag: i === 0 ? "Latest" : "Remix" })));
   }
 
-  // For latest, we only need the first page
-  const videos = await fetchFullChannelVideos(API_KEY, CHANNEL_ID, 50);
-  if (videos.length === 0) return res.json(fallbackVideos.slice(0, 5));
-  
-  // Return exactly 5 as requested
-  res.json(videos.slice(0, 5).map((v, i) => ({ ...v, tag: i === 0 ? "Latest" : "Remix" })));
+  // If not in cache or expired, background fetch and return fallback or old data
+  if (!videoCache.isFetching) {
+    videoCache.isFetching = true;
+    fetchFullChannelVideos(API_KEY, CHANNEL_ID).then(newVideos => {
+      if (newVideos.length > 0) {
+        videoCache.data = newVideos;
+        videoCache.lastFetched = Date.now();
+      }
+      videoCache.isFetching = false;
+    });
+  }
+
+  const result = (videoCache.data || fallbackVideos).slice(0, 5);
+  res.json(result.map((v, i) => ({ ...v, tag: i === 0 ? "Latest" : "Remix" })));
 });
 
 app.get('/api/videos', async (req, res) => {
   const API_KEY = process.env.YOUTUBE_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || "AIzaSyBSPbc6qQtGvjqtj20r7oWpXcCdXfUfsro";
   const CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || "UC8FEwv0WXF5db-pIs8uJkag";
+  const refresh = req.query.refresh === 'true';
 
-  if (!API_KEY || !CHANNEL_ID) {
-    return res.json(fallbackVideos);
+  const now = Date.now();
+  if (!refresh && videoCache.data && (now - videoCache.lastFetched < videoCache.TTL)) {
+    return res.json(videoCache.data);
   }
 
-  const allVideos = await fetchFullChannelVideos(API_KEY, CHANNEL_ID, 500);
-  if (allVideos.length === 0) return res.json(fallbackVideos);
+  if (!videoCache.isFetching) {
+    videoCache.isFetching = true;
+    console.log("[server] Cache miss or refresh requested. Fetching...");
+    try {
+      const newVideos = await fetchFullChannelVideos(API_KEY, CHANNEL_ID);
+      if (newVideos.length > 0) {
+        videoCache.data = newVideos;
+        videoCache.lastFetched = Date.now();
+      }
+    } finally {
+      videoCache.isFetching = false;
+    }
+  }
 
-  res.json(allVideos);
+  res.json(videoCache.data || fallbackVideos);
 });
 
 // ─── Download (Direct Stream - Legacy/Fallback) ──────────────────────────────

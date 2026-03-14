@@ -31,22 +31,30 @@ const MixSection = ({ icon, title, mixes }: MixSectionProps) => {
     setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 4);
   };
 
+  const [isPaused, setIsPaused] = useState(false);
+
+  useEffect(() => {
+    updateScrollState();
+    window.addEventListener('resize', updateScrollState);
+    return () => window.removeEventListener('resize', updateScrollState);
+  }, []);
+
   // Auto-slide effect
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el || isPaused) return;
 
     const interval = setInterval(() => {
       const maxScroll = el.scrollWidth - el.clientWidth;
-      if (el.scrollLeft >= maxScroll - 4) {
+      if (el.scrollLeft >= maxScroll - 10) {
         el.scrollTo({ left: 0, behavior: "smooth" });
       } else {
         el.scrollBy({ left: 220, behavior: "smooth" });
       }
-    }, 3500);
+    }, 4500);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isPaused]);
 
   const scroll = (dir: "left" | "right") => {
     const el = scrollRef.current;
@@ -72,6 +80,8 @@ const MixSection = ({ icon, title, mixes }: MixSectionProps) => {
           id="youtube-videos"
           ref={scrollRef}
           onScroll={updateScrollState}
+          onMouseEnter={() => setIsPaused(true)}
+          onMouseLeave={() => setIsPaused(false)}
           className="flex gap-3 sm:gap-4 overflow-x-auto pb-4 scrollbar-hide scroll-smooth"
         >
           {mixes.map((mix) => (
