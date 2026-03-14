@@ -241,15 +241,17 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
   try {
     // Step 1: Download RAW audio from YouTube
     // Modern yt-dlp flags to bypass "Bot" detection
+    // Added --no-video and --no-playlist to prevent "more than one file" error
     const downloadFlags = [
       '--no-check-certificates',
       '--no-warnings',
       '--no-playlist',
+      '--no-video',
       '-f', 'bestaudio',
       '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
       '--extractor-args', 'youtube:player_client=web,android',
       '--geo-bypass',
-      '-o', rawPath,
+      '-o', `${rawPath}.%(ext)s`, // Let yt-dlp decide extension
       url
     ];
     
@@ -263,26 +265,32 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
       }
     } catch (e) {
       console.warn(`[download] Cookie attempt failed: ${e.message}. Trying generic...`);
-      if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
-      
-      // Fallback: Use 'mweb' client which sometimes bypasses blocks
+      // Fallback: Use 'mweb' client
       const fallbackFlags = [...downloadFlags];
-      fallbackFlags[9] = 'youtube:player_client=mweb,android';
+      fallbackFlags[10] = 'youtube:player_client=mweb,android';
       await run('yt-dlp', fallbackFlags);
     }
 
-    // Verify raw file
-    if (!fs.existsSync(rawPath) || fs.statSync(rawPath).size < 1000) {
-      throw new Error('Raw download failed or file empty');
+    // Step 1.1: Find the actual raw file (yt-dlp adds extension)
+    const files = fs.readdirSync(downloadsDir);
+    const actualRawFile = files.find(f => f.startsWith(path.basename(rawPath)));
+    
+    if (!actualRawFile) {
+      throw new Error('Raw download failed - file not found');
+    }
+    const fullRawPath = path.join(downloadsDir, actualRawFile);
+
+    if (fs.statSync(fullRawPath).size < 1000) {
+      throw new Error('Raw file too small (corrupt)');
     }
 
     // Step 2: Convert to high-quality MP3 using FFmpeg
     await run('ffmpeg', [
-      '-i', rawPath,
+      '-i', fullRawPath,
       '-acodec', 'libmp3lame',
       '-b:a', '192k',
       '-ar', '44100',
-      '-y', // Overwrite
+      '-y',
       mp3Path
     ]);
 
@@ -305,17 +313,20 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
     stream.on('end', () => {
       // Cleanup
       try {
-        if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
+        if (fs.existsSync(fullRawPath)) fs.unlinkSync(fullRawPath);
         if (fs.existsSync(mp3Path)) fs.unlinkSync(mp3Path);
       } catch (e) {}
     });
 
   } catch (err) {
     console.error(`[download] ERROR: ${err.message}`);
-    // Cleanup on error
+    // Cleanup on error: Need to find the raw file again if it exists
     try {
-      if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
-      if (fs.existsSync(mp3Path)) fs.unlinkSync(mp3Path);
+      const files = fs.readdirSync(downloadsDir);
+      const rawFiles = files.filter(f => f.startsWith(tempId));
+      for (const f of rawFiles) {
+        fs.unlinkSync(path.join(downloadsDir, f));
+      }
     } catch (e) {}
     
     if (!res.headersSent) {
