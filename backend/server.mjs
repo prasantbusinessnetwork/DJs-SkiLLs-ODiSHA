@@ -88,99 +88,82 @@ const fallbackVideos = [
   { title: "Illuminati (Remix)", artist: "Visual DJs SkiLLs ODiSHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=hK651bev0uI", videoId: "hK651bev0uI", thumbnail: "https://img.youtube.com/vi/hK651bev0uI/mqdefault.jpg" },
 ];
 
-app.get('/api/latest', async (req, res) => {
-  console.log(`[latest] Fetching newest 5 videos for ${req.ip}`);
+// Helper to fetch ALL videos from channel using pagination
+async function fetchFullChannelVideos(apiKey, channelId, limit = 500) {
+  let videos = [];
+  let nextPageToken = "";
   
-  const API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || process.env.YOUTUBE_API_KEY;
-  const CHANNEL_ID = process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || process.env.YOUTUBE_CHANNEL_ID;
-
-  if (!API_KEY || !CHANNEL_ID) {
-    console.warn("[latest] Missing YouTube API Key or Channel ID. Sending fallback videos.");
-    return res.json(fallbackVideos.slice(0, 5));
-  }
-
   try {
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&order=date&maxResults=50&type=video&key=${API_KEY}`;
-    const response = await fetch(url);
+    // We typically don't want to loop forever, so we set a safety limit (e.g., 500 videos)
+    while (videos.length < limit) {
+      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&maxResults=50&type=video&key=${apiKey}${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`;
+      
+      const response = await fetch(url);
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`[youtube] API error: ${errText}`);
+        break;
+      }
 
-    if (!response.ok) {
-      console.error("[latest] YouTube API error:", await response.text());
-      return res.json(fallbackVideos.slice(0, 5));
-    }
+      const data = await response.json();
+      if (!data.items || data.items.length === 0) break;
 
-    const data = await response.json();
-    
-    const videos = data.items
-      .map((item, index) => {
+      const items = data.items.map((item) => {
         const videoId = item.id?.videoId;
         const snippet = item.snippet;
         if (!videoId || !snippet) return null;
-
-        const title = snippet.title || "";
-        const thumbnails = snippet.thumbnails || {};
-        const thumbnailUrl = thumbnails.medium?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
-
         return {
-          title,
+          title: snippet.title,
           artist: snippet.channelTitle,
-          tag: index === 0 ? "Latest" : "Remix",
+          tag: "Remix",
           youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
           videoId,
-          thumbnail: thumbnailUrl,
+          thumbnail: snippet.thumbnails?.medium?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
           publishedAt: snippet.publishedAt,
         };
-      })
-      .filter((v) => v !== null);
+      }).filter(v => v !== null);
 
-    res.status(200).json(videos.slice(0, 5));
+      videos = [...videos, ...items];
+      nextPageToken = data.nextPageToken;
+
+      if (!nextPageToken) break;
+    }
+    return videos;
   } catch (error) {
-    console.error("[latest] Fetch Exception:", error);
-    res.json(fallbackVideos.slice(0, 5));
+    console.error("[youtube] Fetch Error:", error);
+    return [];
   }
+}
+
+app.get('/api/latest', async (req, res) => {
+  const API_KEY = process.env.YOUTUBE_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
+  const CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID;
+
+  if (!API_KEY || !CHANNEL_ID) {
+    console.warn("[latest] Missing API Key/ID. Sending fallbacks.");
+    return res.json(fallbackVideos.slice(0, 5));
+  }
+
+  // For latest, we only need the first page
+  const videos = await fetchFullChannelVideos(API_KEY, CHANNEL_ID, 50);
+  if (videos.length === 0) return res.json(fallbackVideos.slice(0, 5));
+  
+  // Return exactly 5 as requested
+  res.json(videos.slice(0, 5).map((v, i) => ({ ...v, tag: i === 0 ? "Latest" : "Remix" })));
 });
 
 app.get('/api/videos', async (req, res) => {
-  const API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY || process.env.YOUTUBE_API_KEY;
-  const CHANNEL_ID = process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID || process.env.YOUTUBE_CHANNEL_ID;
-  const targetCount = Math.min(Number(req.query.maxResults) || 500, 500);
+  const API_KEY = process.env.YOUTUBE_API_KEY || process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
+  const CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID;
 
   if (!API_KEY || !CHANNEL_ID) {
     return res.json(fallbackVideos);
   }
 
-  try {
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${CHANNEL_ID}&order=date&maxResults=50&type=video&key=${API_KEY}`;
-    const response = await fetch(url);
+  const allVideos = await fetchFullChannelVideos(API_KEY, CHANNEL_ID, 500);
+  if (allVideos.length === 0) return res.json(fallbackVideos);
 
-    if (!response.ok) {
-      console.error("[videos] YouTube API error:", await response.text());
-      return res.json(fallbackVideos);
-    }
-    
-    const data = await response.json();
-    if (!data.items || data.items.length === 0) {
-      return res.json(fallbackVideos);
-    }
-
-    const allVideos = data.items.map((item) => {
-      const videoId = item.id?.videoId;
-      const snippet = item.snippet;
-      return {
-        title: snippet.title,
-        artist: snippet.channelTitle,
-        tag: "Mix",
-        youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
-        videoId,
-        thumbnail: snippet.thumbnails?.medium?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
-        publishedAt: snippet.publishedAt,
-      };
-    }).filter(v => v !== null);
-
-    res.status(200).json(allVideos);
-  } catch (error) {
-    console.error("[videos] Fetch error:", error);
-    res.json(fallbackVideos);
-  }
+  res.json(allVideos);
 });
 
 // ─── Download (Direct Stream - Legacy/Fallback) ──────────────────────────────
