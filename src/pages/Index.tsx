@@ -26,22 +26,25 @@ const fallbackMixes = [
 
 const Index = () => {
   // Fetch all videos for the homepage to populate both sections
-  const { data: videos, isLoading, isError } = useYouTubeVideos(500, 'all');
+  const { data: rawVideos, isLoading, isError } = useYouTubeVideos(500, 'all');
   const isMobile = useIsMobile();
 
+  // Use rawVideos if available and not empty, otherwise use fallbackMixes
+  const videos = (rawVideos && rawVideos.length > 0) ? rawVideos : (isError || (!isLoading && (!rawVideos || rawVideos.length === 0)) ? fallbackMixes : []);
+
   // Split videos into sections
-  const latestVideos = videos?.slice(0, 5).map((v, i) => ({
+  const latestVideos = videos.slice(0, 5).map((v, i) => ({
     ...v,
     thumbnail: v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`,
     isNew: i === 0,
-    tag: i === 0 ? "NEW" : v.tag,
-  })) || (isError ? fallbackMixes : []);
+    tag: i === 0 ? "NEW" : (v.tag || "Remix"),
+  }));
 
-  const allOtherVideos = videos?.slice(5).map(v => ({
+  const allOtherVideos = videos.slice(5).map(v => ({
     ...v,
     thumbnail: v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`,
     tag: v.tag || "Mix",
-  })) || [];
+  }));
 
   return (
     <div className="min-h-screen bg-background">

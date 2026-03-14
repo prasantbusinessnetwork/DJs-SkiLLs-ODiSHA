@@ -156,9 +156,22 @@ const VideoItem = ({ video }: VideoItemProps) => {
 };
 
 const AllVideos = () => {
-  const { data: videos, isLoading, isError } = useYouTubeVideos(500, 'all');
+  const { data: rawVideos, isLoading, isError } = useYouTubeVideos(500, 'all');
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
+
+  const videos = useMemo(() => {
+    if (rawVideos && rawVideos.length > 0) return rawVideos;
+    if (!isLoading && (isError || !rawVideos || rawVideos.length === 0)) {
+      // Return a basic set of fallbacks so the page isn't blank
+      return [
+        { title: "Aaj Ki Raat (Remix)", artist: "DJs SkILLs ODISHA", tag: "Remix", youtubeUrl: "https://www.youtube.com/watch?v=KsJ2-7cWTyg", videoId: "KsJ2-7cWTyg", thumbnail: "https://img.youtube.com/vi/KsJ2-7cWTyg/mqdefault.jpg", publishedAt: new Date().toISOString() },
+        { title: "Tum Toh Dhokebaaz Ho", artist: "DJs SkiLLs ODiSHA", tag: "Tapori Mix", youtubeUrl: "https://www.youtube.com/watch?v=uYTeGgKheFw", videoId: "uYTeGgKheFw", thumbnail: "https://img.youtube.com/vi/uYTeGgKheFw/mqdefault.jpg", publishedAt: new Date().toISOString() },
+        { title: "JAMAL KUDU REMIX", artist: "DJs SkiLLs ODiSHA", tag: "Trending", youtubeUrl: "https://www.youtube.com/watch?v=a5EEWUnI8rg", videoId: "a5EEWUnI8rg", thumbnail: "https://img.youtube.com/vi/a5EEWUnI8rg/mqdefault.jpg", publishedAt: new Date().toISOString() },
+      ];
+    }
+    return [];
+  }, [rawVideos, isLoading, isError]);
 
   const filteredVideos = useMemo(() => {
     if (!videos) return [];
