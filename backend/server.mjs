@@ -19,7 +19,7 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import { promisify } from 'util';
-import rateLimit from 'express-rate-limit'; // Added for protection
+import { rateLimit } from 'express-rate-limit'; // Added for protection
 
 const execPromise = promisify(exec);
 const __dirname = path.dirname(new URL(import.meta.url).pathname).replace(/^\/([a-zA-Z]:)/, '$1'); // Handle Windows paths from URL
@@ -202,6 +202,10 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
   res.setHeader("Transfer-Encoding", "chunked");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Cache-Control", "no-cache");
+
+  // Setup cookies for bot detection bypass if available
+  const cookiesPath = path.join(process.cwd(), 'cookies.txt');
+  const cookiesFlag = fs.existsSync(cookiesPath) ? ["--cookies", cookiesPath] : [];
 
   // Use SPAWN for streaming - no local file storage needed
   // yt-dlp: extract best audio and pipe to stdout
