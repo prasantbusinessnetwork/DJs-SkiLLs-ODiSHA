@@ -94,11 +94,15 @@ async function fetchFullChannelVideos(apiKey, channelId, limit = 500) {
   let nextPageToken = "";
   
   try {
-    // We typically don't want to loop forever, so we set a safety limit (e.g., 500 videos)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
     while (videos.length < limit) {
       const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&maxResults=50&type=video&key=${apiKey}${nextPageToken ? `&pageToken=${nextPageToken}` : ''}`;
       
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
         const errText = await response.text();
         console.error(`[youtube] API error: ${errText}`);

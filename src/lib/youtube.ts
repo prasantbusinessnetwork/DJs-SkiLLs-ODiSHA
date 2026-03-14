@@ -1,4 +1,5 @@
-const API = import.meta.env.VITE_API_URL || "https://djs-skills-odisha-production.up.railway.app";
+const envApi = import.meta.env.VITE_API_URL;
+const API = (envApi && envApi.trim() !== "") ? envApi : "https://djs-skills-odisha-production.up.railway.app";
 
 export interface YouTubeVideo {
   title: string;
@@ -12,11 +13,16 @@ export interface YouTubeVideo {
 
 export async function fetchLatestVideos(maxResults = 5): Promise<YouTubeVideo[]> {
   try {
-    const res = await fetch(`${API}/api/latest`);
+    const fetchUrl = `${API}/api/latest`;
+    console.log(`[YouTube] Fetching Latest: ${fetchUrl}`);
+    const res = await fetch(fetchUrl);
     
     if (res.ok) {
       const data = await res.json();
+      console.log(`[YouTube] Fetched ${data.length} latest videos`);
       return Array.isArray(data) ? data : [];
+    } else {
+      console.error(`[YouTube] Latest API Error: ${res.status} ${res.statusText}`);
     }
   } catch (e) {
     console.error("Latest videos fetch failed:", e);
@@ -27,15 +33,16 @@ export async function fetchLatestVideos(maxResults = 5): Promise<YouTubeVideo[]>
 
 export async function fetchAllVideos(maxResults = 500): Promise<YouTubeVideo[]> {
   try {
-    console.log(`[YouTube] Fetching from: ${API}/api/videos`);
-    const res = await fetch(`${API}/api/videos`);
+    const fetchUrl = `${API}/api/videos`;
+    console.log(`[YouTube] Fetching All: ${fetchUrl}`);
+    const res = await fetch(fetchUrl);
     
     if (res.ok) {
       const data = await res.json();
       console.log(`[YouTube] Successfully fetched ${data.length} videos`);
       return Array.isArray(data) ? data : [];
     } else {
-      console.error(`[YouTube] API returned error: ${res.status} ${res.statusText}`);
+      console.error(`[YouTube] All Videos API Error: ${res.status} ${res.statusText}`);
     }
   } catch (e) {
     console.error("All videos fetch failed:", e);
