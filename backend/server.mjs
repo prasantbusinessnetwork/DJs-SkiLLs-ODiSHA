@@ -380,8 +380,14 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
     }
 
     if (!success) {
-      console.log('[ironclad] Local tiers failed. Activating Zero-Menu Safety Net (Ironclad 3.3)...');
-      const videoId = url.match(/[?&]v=([^&#]+)/)?.[1] || url;
+      console.log('[ironclad] Local tiers failed. Activating Zero-Menu Safety Net (Ironclad 3.3/3.4)...');
+      
+      // Better videoId extraction (Robust Parsing)
+      let videoId = url;
+      if (url.includes('v=')) videoId = url.split('v=')[1].split('&')[0];
+      else if (url.includes('youtu.be/')) videoId = url.split('youtu.be/')[1].split('?')[0];
+      else if (url.includes('shorts/')) videoId = url.split('shorts/')[1].split('?')[0];
+      videoId = videoId.trim();
       
       const cobaltInstances = [
         "https://cobalt.tools/api/json",
@@ -433,7 +439,10 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
         }
       }
 
-      throw new Error("Extreme Block Detected. All 8 Tiers (local and external) are currently blocked by YouTube.");
+      // Final Step: Universal Direct-Site Fallback (USER NEVER SEES ERROR)
+      console.log('[ironclad] All APIs failed. Using Universal Redirect.');
+      const finalManualLink = `https://savefrom.net/?url=https://www.youtube.com/watch?v=${videoId}`;
+      return res.redirect(finalManualLink);
     }
 
     // SERVE THE PERFECT MP3
