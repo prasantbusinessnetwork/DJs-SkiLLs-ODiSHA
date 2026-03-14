@@ -36,35 +36,26 @@ const VideoItem = ({ video }: VideoItemProps) => {
     try {
       console.log(`[AllVideos] Download → ${downloadEndpoint}`);
 
-      const res = await fetch(downloadEndpoint);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-
-      const blob = await res.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.style.display = "none";
-      a.href = blobUrl;
-      a.download = `${sanitize(video.title)}.mp3`;
-      document.body.appendChild(a);
-      a.click();
-
+      // Direct download trigger (best for mobile & high frequency)
+      const link = document.createElement("a");
+      link.href = downloadEndpoint;
+      link.setAttribute("download", `${sanitize(video.title)}.mp3`);
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      
       setTimeout(() => {
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(blobUrl);
-      }, 1000);
+        document.body.removeChild(link);
+      }, 500);
 
       setDlState("ready");
-      toast.success("Download complete!");
+      toast.success("Downloading mix...");
       setTimeout(() => setDlState("idle"), 5000);
 
     } catch (err: any) {
       console.error("[AllVideos] Download failed:", err);
       setDlState("failed");
-      toast.error(`Download failed: ${err.message || "Please try again."}`);
+      toast.error(`Error: ${err.message || "Please try again."}`);
       setTimeout(() => setDlState("idle"), 4000);
     }
   };

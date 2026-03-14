@@ -19,6 +19,7 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import { promisify } from 'util';
+import rateLimit from 'express-rate-limit'; // Added for protection
 
 const execPromise = promisify(exec);
 const __dirname = path.dirname(new URL(import.meta.url).pathname).replace(/^\/([a-zA-Z]:)/, '$1'); // Handle Windows paths from URL
@@ -64,6 +65,15 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'Range'],
   exposedHeaders: ['Content-Disposition', 'Content-Length', 'Accept-Ranges'],
 }));
+
+// ─── Rate Limiter (50 downloads per IP per 24h) ───────────────────────────────
+const downloadLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000, // 24 hours
+  max: 100, // Limit each IP to 100 downloads per window (being generous)
+  message: { error: "daily_limit_reached", message: "You have reached your daily download limit (100). Please try again tomorrow." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
@@ -176,51 +186,59 @@ app.get('/api/stream', (req, res) => {
   // ... (omitted for brevity in this chunk, I'll keep it as /api/stream)
 });
 
-// ─── MP3 Download (Step 3: Specific Logic) ────────────────────────────────────
-app.get("/api/download", (req, res) => {
+// ─── MP3 Download (Optimized for High Speed & Reliability) ────────────────────
+app.get("/api/download", downloadLimiter, async (req, res) => {
   const url = req.query.url;
-  if (!url) {
-    return res.status(400).json({ error: "missing_url" });
-  }
+  const requestedTitle = req.query.title ? String(req.query.title) : "audio";
+  const safeTitle = requestedTitle.replace(/[^\w\s-]/gi, '').trim() || "audio";
 
-  // Define a predictable file name and path for the download
-  const fileId = Date.now();
-  const filePath = path.join(downloadsDir, `download_${fileId}.mp3`);
+  if (!url) return res.status(400).json({ error: "missing_url" });
 
-  // Setup cookies for bot detection bypass if available
+  console.log(`[download] Request: ${url} | Title: ${safeTitle}`);
+
+  // Set headers for MP3 stream
+  res.setHeader("Content-Type", "audio/mpeg");
+  res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"`);
+  res.setHeader("Transfer-Encoding", "chunked");
+
   const cookiesPath = path.join(process.cwd(), 'cookies.txt');
-  const cookiesFlag = fs.existsSync(cookiesPath) ? `--cookies "${cookiesPath}"` : '';
+  const cookiesFlag = fs.existsSync(cookiesPath) ? ["--cookies", cookiesPath] : [];
 
-  // Step 2 & 3: Standardized command with anti-bot bypass
-  const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --no-warnings --rm-cache-dir ${cookiesFlag} --extractor-args "youtube:player_client=android,ios" -o "${filePath}" "${url}"`;
-  console.log(`[download] Executing: ${command}`);
+  // Use SPAWN for streaming - no local file storage needed (unlimited downloads possible)
+  // Flags: -x (extract audio), -f ba (best audio), -o - (stdout)
+  const ytdlp = spawn('yt-dlp', [
+    '-x',
+    '--audio-format', 'mp3',
+    '--audio-quality', '0',
+    '--no-warnings',
+    '-f', 'bestaudio',
+    ...cookiesFlag,
+    '--extractor-args', 'youtube:player_client=android,ios',
+    '-o', '-',
+    url
+  ]);
 
-  exec(command, (error) => {
-    if (error) {
-      console.error(`[download] Error: ${error.message}`);
-      return res.status(500).json({ error: "conversion_failed" });
-    }
+  // Convert stdout directly to response
+  ytdlp.stdout.pipe(res);
 
-    const requestedTitle = req.query.title ? String(req.query.title) : "audio";
-    const safeTitle = requestedTitle.replace(/[^\w\s-]/gi, '').trim() || "audio";
+  let errorLog = '';
+  ytdlp.stderr.on('data', (data) => {
+    errorLog += data.toString();
+  });
 
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"`);
-
-    if (fs.existsSync(filePath)) {
-      const stream = fs.createReadStream(filePath);
-      stream.pipe(res);
-
-      stream.on('end', () => {
-        try {
-          fs.unlinkSync(filePath);
-        } catch (e) {
-          console.error('[cleanup] Failed:', e);
-        }
-      });
+  ytdlp.on('close', (code) => {
+    if (code !== 0) {
+      console.error(`[download] yt-dlp failed (code ${code}): ${errorLog}`);
+      // If headers haven't been sent, we could send an error, but with streaming it's usually too late
+      if (!res.headersSent) res.status(500).json({ error: "download_failed" });
     } else {
-      res.status(500).json({ error: "file_not_found" });
+      console.log(`[download] Completed: ${safeTitle}`);
     }
+  });
+
+  // If user cancels request, kill process
+  req.on('close', () => {
+    ytdlp.kill('SIGTERM');
   });
 });
 

@@ -34,25 +34,21 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     try {
       console.log(`[MixCard] Download → ${downloadEndpoint}`);
       
-      // We use direct assignment instead of fetch/blob to avoid browser memory overload
-      // Especially for large files (10MB+), fetch().blob() will crash on mobile
-      // Use a hidden anchor to trigger download instead of location.assign
-      // This is often more reliable on mobile browsers
+      // Use hidden anchor for direct download trigger
       const link = document.createElement("a");
       link.href = downloadEndpoint;
+      link.setAttribute("download", `${title || "audio"}.mp3`);
       link.style.display = "none";
       document.body.appendChild(link);
+      link.click();
       
       setTimeout(() => {
-        link.click();
-        setTimeout(() => document.body.removeChild(link), 100);
+        document.body.removeChild(link);
       }, 500);
 
-      // We can't track exact completion of location.assign, so we show success toast after a delay
-      setTimeout(() => {
-        setDlState("success");
-        setTimeout(() => setDlState("idle"), 5000);
-      }, 3000);
+      // Streaming has started, we mark as success quickly since it's a direct browser download
+      setDlState("success");
+      setTimeout(() => setDlState("idle"), 5000);
 
     } catch (error: any) {
       console.error("[MixCard] Download failed:", error);
