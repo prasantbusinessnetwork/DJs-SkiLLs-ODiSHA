@@ -27,27 +27,45 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
 
     setDlState("downloading");
     
-    // Always send full YouTube URL so backend has no ambiguity
     const youtubeFullUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const downloadEndpoint = `${API_BASE}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(title || "audio")}`;
 
     try {
       console.log(`[MixCard] Download → ${downloadEndpoint}`);
       
-      // Use hidden anchor for direct download trigger
-      const link = document.createElement("a");
-      link.href = downloadEndpoint;
-      link.setAttribute("download", `${title || "audio"}.mp3`);
-      link.style.display = "none";
-      document.body.appendChild(link);
-      link.click();
-      
-      setTimeout(() => {
-        document.body.removeChild(link);
-      }, 500);
+      const response = await fetch(downloadEndpoint);
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = `Server error: ${response.status}`;
+        try {
+          const errJson = JSON.parse(errorText);
+          errorMessage = errJson.message || errorMessage;
+        } catch(e) {}
+        throw new Error(errorMessage);
+      }
 
-      // Streaming has started, we mark as success quickly since it's a direct browser download
-      setDlState("success");
+      const contentType = response.headers.get("Content-Type") || "";
+      
+      if (contentType.includes("audio") || contentType.includes("octet-stream")) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `${title || "audio"}.mp3`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        setDlState("success");
+        toast.success("Download started!");
+      } else {
+        // If it's a redirect or a secondary page
+        window.open(response.url, "_blank");
+        setDlState("success");
+        toast.success("Opening download link...");
+      }
+
       setTimeout(() => setDlState("idle"), 5000);
 
     } catch (error: any) {

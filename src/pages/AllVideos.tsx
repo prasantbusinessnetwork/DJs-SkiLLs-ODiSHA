@@ -28,34 +28,50 @@ const VideoItem = ({ video }: VideoItemProps) => {
     if (!video.videoId || dlState === "preparing") return;
 
     setDlState("preparing");
-    
-    // Always send full YouTube URL so backend has no ambiguity
     const youtubeFullUrl = `https://www.youtube.com/watch?v=${video.videoId}`;
     const downloadEndpoint = `${API_BASE}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(video.title)}`;
 
     try {
       console.log(`[AllVideos] Download → ${downloadEndpoint}`);
 
-      // Direct download trigger (best for mobile & high frequency)
-      const link = document.createElement("a");
-      link.href = downloadEndpoint;
-      link.setAttribute("download", `${sanitize(video.title)}.mp3`);
-      link.style.display = "none";
-      document.body.appendChild(link);
-      link.click();
-      
-      setTimeout(() => {
-        document.body.removeChild(link);
-      }, 500);
+      const response = await fetch(downloadEndpoint);
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = `Server error: ${response.status}`;
+        try {
+          const errJson = JSON.parse(errorText);
+          errorMessage = errJson.message || errorMessage;
+        } catch(e) {}
+        throw new Error(errorMessage);
+      }
 
-      setDlState("ready");
-      toast.success("Downloading mix...");
+      const contentType = response.headers.get("Content-Type") || "";
+      
+      if (contentType.includes("audio") || contentType.includes("octet-stream")) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", `${sanitize(video.title || "audio")}.mp3`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        
+        setDlState("ready");
+        toast.success("Download started!");
+      } else {
+        window.open(response.url, "_blank");
+        setDlState("ready");
+        toast.success("Opening download link...");
+      }
+
       setTimeout(() => setDlState("idle"), 5000);
 
     } catch (err: any) {
       console.error("[AllVideos] Download failed:", err);
       setDlState("failed");
-      toast.error(`Error: ${err.message || "Please try again."}`);
+      toast.error(`Download failed: ${err.message || "Please try again."}`);
       setTimeout(() => setDlState("idle"), 4000);
     }
   };

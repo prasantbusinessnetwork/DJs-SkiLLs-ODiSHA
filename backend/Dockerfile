@@ -1,24 +1,26 @@
-FROM node:18
+FROM node:20-slim
 
-RUN apt-get update && apt-get install -y ffmpeg python3 python3-pip
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    python3 \
+    python3-pip \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --break-system-packages -U https://github.com/yt-dlp/yt-dlp/archive/master.tar.gz
+# Install latest yt-dlp nightly and the POT provider plugin
+RUN wget -q https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp && \
+    chmod a+rx /usr/local/bin/yt-dlp && \
+    pip install -U bgutil-ytdlp-pot-provider --break-system-packages
 
-# ── Verify tools ─────────────────────────────────────────────────────────────
-RUN yt-dlp --version && ffmpeg -version | head -1
-
-# ── App ───────────────────────────────────────────────────────────────────────
+# Add Node to the path for bgutil's BotGuard solver
+ENV NODE_PATH=/usr/local/lib/node_modules
+ENV NODE_ENV=production
 WORKDIR /app
 
-# Copy from repo root context (railway.json sets dockerfilePath: backend/Dockerfile)
 COPY backend/package*.json ./
-RUN npm install --production --no-optional
+RUN npm install --production
 
 COPY backend/ ./
 
-ENV NODE_ENV=production
-ENV PORT=3000
-
 EXPOSE 3000
-
 CMD ["node", "server.mjs"]
