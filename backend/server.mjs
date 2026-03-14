@@ -240,24 +240,35 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
 
   try {
     // Step 1: Download RAW audio from YouTube
+    // Modern yt-dlp flags to bypass "Bot" detection
     const downloadFlags = [
       '--no-check-certificates',
       '--no-warnings',
       '--no-playlist',
       '-f', 'bestaudio',
-      '--extractor-args', 'youtube:player_client=android,ios',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      '--extractor-args', 'youtube:player_client=web,android',
+      '--geo-bypass',
       '-o', rawPath,
       url
     ];
     
-    // Attempt with/without cookies
+    // Attempt with cookies first, then without, then with a different client
     try {
-      const flags = hasCookies ? ['--cookies', cookiesPath, ...downloadFlags] : downloadFlags;
-      await run('yt-dlp', flags);
+      if (hasCookies && fs.statSync(cookiesPath).size > 10) {
+        console.log('[download] Attempting with cookies...');
+        await run('yt-dlp', ['--cookies', cookiesPath, ...downloadFlags]);
+      } else {
+        throw new Error('No valid cookies found');
+      }
     } catch (e) {
-      console.warn(`[download] First attempt failed, trying fallback...`);
+      console.warn(`[download] Cookie attempt failed: ${e.message}. Trying generic...`);
       if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
-      await run('yt-dlp', downloadFlags);
+      
+      // Fallback: Use 'mweb' client which sometimes bypasses blocks
+      const fallbackFlags = [...downloadFlags];
+      fallbackFlags[9] = 'youtube:player_client=mweb,android';
+      await run('yt-dlp', fallbackFlags);
     }
 
     // Verify raw file
