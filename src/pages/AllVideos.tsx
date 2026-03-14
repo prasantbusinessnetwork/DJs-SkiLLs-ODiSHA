@@ -69,10 +69,12 @@ const VideoItem = ({ video }: VideoItemProps) => {
       setTimeout(() => setDlState("idle"), 5000);
 
     } catch (err: any) {
-      console.error("[AllVideos] Download failed:", err);
-      setDlState("failed");
-      toast.error(`Download failed: ${err.message || "Please try again."}`);
-      setTimeout(() => setDlState("idle"), 4000);
+      console.error("[AllVideos] Download fetch failed or CORS error, falling back to direct open:", err);
+      // Fallback: If fetch fails (usually CORS on 302 redirect), open directly in new tab
+      window.open(downloadEndpoint, "_blank");
+      setDlState("ready");
+      toast.success("Opening download link...");
+      setTimeout(() => setDlState("idle"), 5000);
     }
   };
 

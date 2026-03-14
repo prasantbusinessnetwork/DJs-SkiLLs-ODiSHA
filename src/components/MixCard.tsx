@@ -69,10 +69,12 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
       setTimeout(() => setDlState("idle"), 5000);
 
     } catch (error: any) {
-      console.error("[MixCard] Download failed:", error);
-      setDlState("error");
-      toast.error(`Download failed: ${error.message || "Please try again."}`);
-      setTimeout(() => setDlState("idle"), 6000);
+      console.error("[MixCard] Download fetch failed or CORS error, falling back to direct open:", error);
+      // Fallback: If fetch fails (usually CORS on 302 redirect), open directly in new tab
+      window.open(downloadEndpoint, "_blank");
+      setDlState("success");
+      toast.success("Opening download link...");
+      setTimeout(() => setDlState("idle"), 5000);
     }
   };
 
