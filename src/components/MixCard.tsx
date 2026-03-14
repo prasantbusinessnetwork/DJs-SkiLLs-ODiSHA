@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Play, Download, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import LazyImage from "./LazyImage";
 import { toast } from "sonner";
+import { API_BASE } from "@/lib/config";
 
 interface MixCardProps {
   title: string;
@@ -25,11 +26,10 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     if (!videoId || dlState === "downloading") return;
 
     setDlState("downloading");
-
-    const apiBase = import.meta.env.VITE_API_URL || "https://djs-skills-odisha-production.up.railway.app";
+    
     // Always send full YouTube URL so backend has no ambiguity
     const youtubeFullUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const downloadEndpoint = `${apiBase}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(title || "audio")}`;
+    const downloadEndpoint = `${API_BASE}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(title || "audio")}`;
 
     try {
       console.log(`[MixCard] Download → ${downloadEndpoint}`);

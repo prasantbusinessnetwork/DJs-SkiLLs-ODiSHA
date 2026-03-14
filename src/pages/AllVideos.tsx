@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import LazyImage from "@/components/LazyImage";
 import MobileMenu from "@/components/MobileMenu";
+import { API_BASE } from "@/lib/config";
 
 import { YouTubeVideo } from "@/lib/youtube";
 import { toast } from "sonner";
@@ -27,11 +28,10 @@ const VideoItem = ({ video }: VideoItemProps) => {
     if (!video.videoId || dlState === "preparing") return;
 
     setDlState("preparing");
-
-    const apiBase = import.meta.env.VITE_API_URL || "https://djs-skills-odisha-production.up.railway.app";
+    
     // Always send full YouTube URL so backend has no ambiguity
     const youtubeFullUrl = `https://www.youtube.com/watch?v=${video.videoId}`;
-    const downloadEndpoint = `${apiBase}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(video.title)}`;
+    const downloadEndpoint = `${API_BASE}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(video.title)}`;
 
     try {
       console.log(`[AllVideos] Download → ${downloadEndpoint}`);

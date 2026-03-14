@@ -1,13 +1,4 @@
-const envApi = import.meta.env.VITE_API_URL;
-let API = (envApi && envApi.trim() !== "") ? envApi.trim() : "https://djs-skills-odisha-production.up.railway.app";
-
-// Ensure it's an absolute URL with protocol
-if (API && !API.startsWith("http")) {
-  API = `https://${API}`;
-}
-// Remove trailing slash if any
-API = API.replace(/\/$/, "");
-console.log(`[YouTube] Base API URL: ${API}`);
+import { API_BASE as API } from "./config";
 
 export interface YouTubeVideo {
   title: string;

@@ -12,16 +12,17 @@ import NotFound from "./pages/NotFound";
 
 import { useEffect } from "react";
 
+import { API_BASE } from "./lib/config";
+
 const queryClient = new QueryClient();
 
 const App = () => {
   // Keep-alive ping to Railway
   useEffect(() => {
-    const apiBase = import.meta.env.VITE_API_URL;
-    if (!apiBase) return;
+    if (!API_BASE) return;
 
     const ping = () => {
-      fetch(`${apiBase}/health`).catch(() => {});
+      fetch(`${API_BASE}/health`).catch(() => {});
     };
     ping();
     const interval = setInterval(ping, 1000 * 60 * 10); // Every 10 mins
