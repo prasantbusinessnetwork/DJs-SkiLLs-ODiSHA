@@ -275,30 +275,42 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
   };
 
   try {
-    // 3-TIER DOWNLOAD ATTEMPT
+    // ULTIMATE 5-TIER DOWNLOAD ATTEMPT
     let success = false;
+    let lastError = "";
+    
+    // Clear yt-dlp cache once per request to avoid session stickiness/blocking
+    try { await runWithTimeout('yt-dlp', ['--rm-cache-dir']); } catch(e) {}
+
     const attempts = [
-      { name: "Cookies + Desktop", cookies: true, client: "web,android" },
-      { name: "No Cookies + Desktop", cookies: false, client: "web,android" },
-      { name: "No Cookies + Mobile", cookies: false, client: "mweb,android" }
+      { name: "Cookies + TV Mode (Highly Stable)", cookies: true, client: "tv,web" },
+      { name: "Cookies + Mobile (Stealth)", cookies: true, client: "android,ios" },
+      { name: "No Cookies + TV Mode (Fallback)", cookies: false, client: "tv,web" },
+      { name: "No Cookies + Embedded (Fallback 2)", cookies: false, client: "tv_embedded,web" },
+      { name: "No Cookies + Mobile (Final Stand)", cookies: false, client: "mweb,android" }
     ];
 
     for (const attempt of attempts) {
       if (attempt.cookies && !hasCookies) continue;
       
-      console.log(`[ironclad] Attempting: ${attempt.name}`);
+      console.log(`[ironclad] Trying Tier: ${attempt.name}`);
       try {
         const flags = [
-          '--no-check-certificates', '--no-warnings', '--no-playlist',
+          '--no-check-certificates',
+          '--no-warnings',
+          '--no-playlist',
+          '--prefer-insecure',
+          '--add-header', 'Referer:https://www.youtube.com/',
+          '--add-header', 'Origin:https://www.youtube.com',
           '-f', 'ba/b',
-          '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
           '--extractor-args', `youtube:player_client=${attempt.client}`,
           '-o', `${rawPath}.%(ext)s`,
           url
         ];
         if (attempt.cookies) flags.unshift('--cookies', cookiesPath);
         
-        await runWithTimeout('yt-dlp', flags);
+        await runWithTimeout('yt-dlp', flags, 90000);
         
         // Find the file
         const files = fs.readdirSync(downloadsDir);
@@ -319,14 +331,17 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
           }
         }
       } catch (e) {
-        console.warn(`[ironclad] ${attempt.name} failed: ${e.message}`);
+        console.warn(`[ironclad] Tier failed (${attempt.name}): ${e.message}`);
+        lastError = e.message;
         // Cleanup attempt files
-        const files = fs.readdirSync(downloadsDir);
-        files.filter(f => f.startsWith(path.basename(rawPath))).forEach(f => fs.unlinkSync(path.join(downloadsDir, f)));
+        try {
+          const files = fs.readdirSync(downloadsDir);
+          files.filter(f => f.startsWith(path.basename(rawPath))).forEach(f => fs.unlinkSync(path.join(downloadsDir, f)));
+        } catch(cl) {}
       }
     }
 
-    if (!success) throw new Error("All download attempts failed. YouTube might be blocking the server.");
+    if (!success) throw new Error(`YouTube Block Detected. Final Tool Error: ${lastError}`);
 
     // SERVE THE PERFECT MP3
     const finalStats = fs.statSync(mp3Path);
