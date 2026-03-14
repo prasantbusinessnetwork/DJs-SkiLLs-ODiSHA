@@ -158,15 +158,27 @@ app.get('/api/videos', async (req, res) => {
   res.json(videoCache.data || fallbackVideos);
 });
 
-// --- Cookie Logic (Preserved) ---
-const cookiesPath = path.join(process.cwd(), 'cookies.txt');
-if (process.env.YOUTUBE_COOKIES) {
-  try {
-    let cookieData = process.env.YOUTUBE_COOKIES.replace(/\\n/g, '\n').trim();
-    if (cookieData.includes('.youtube.com') && !cookieData.includes('\t')) cookieData = cookieData.replace(/ +/g, '\t');
-    fs.writeFileSync(cookiesPath, cookieData);
-  } catch (e) { console.error('[server] Cookie setup failed:', e.message); }
+const cookiesPath = path.join(os.tmpdir(), 'yt_cookies.txt'); // Use temp dir for reliability
+
+async function setupCookies() {
+  const rawCookies = process.env.YOUTUBE_COOKIES;
+  if (rawCookies) {
+    try {
+      let cookieData = rawCookies.replace(/\\n/g, '\n').trim();
+      // Basic Netscape format repair
+      if (cookieData.includes('.youtube.com') && !cookieData.includes('\t')) {
+        cookieData = cookieData.replace(/ +/g, '\t');
+      }
+      fs.writeFileSync(cookiesPath, cookieData, { mode: 0o644 });
+      console.log(`[server] Cookies configured successfully. Size: ${cookieData.length} bytes`);
+    } catch (e) {
+      console.error('[server] Error writing cookies:', e.message);
+    }
+  } else {
+    console.warn('[server] YOUTUBE_COOKIES environment variable is MISSING!');
+  }
 }
+setupCookies();
 
 // --- Download Route ---
 app.get("/api/download", downloadLimiter, async (req, res) => {
@@ -180,7 +192,7 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
   if (activeDownloads >= MAX_CONCURRENT_DOWNLOADS) {
     return res.status(429).json({ 
       error: "server_busy", 
-      message: "Server is busy with other downloads. Please try again in 30 seconds.",
+      message: "Server busy. Try again in 30 seconds.",
       retryAfter: 30 
     });
   }
@@ -201,27 +213,28 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
       proc.on('close', (code) => {
         clearTimeout(timer);
         if (code === 0) resolve();
-        else reject(new Error(stderr.trim() || `Exit code ${code}`));
+        else reject(new Error(stderr.trim() || `Exit ${code}`));
       });
     });
   };
 
   try {
-    console.log(`[ironclad] Download Request: ${url} (Queue: ${activeDownloads}/${MAX_CONCURRENT_DOWNLOADS})`);
+    console.log(`[ironclad] Request URL: ${url} (Queue: ${activeDownloads})`);
 
-    // --- Hardened 4-Tier Strategy ---
     let success = false;
     const attempts = [
-      { name: "Cookies+TV", cookies: true, client: "tv,web" },
-      { name: "Cookies+iOS", cookies: true, client: "ios,web" },
-      { name: "NoCookies+TV", cookies: false, client: "tv,web" },
-      { name: "NoCookies+Embedded", cookies: false, client: "tv_embedded,web" }
+      { name: "Cookies+TV", cookies: true, client: "tv,web", timeout: 25000 },
+      { name: "Cookies+iOS", cookies: true, client: "ios,web", timeout: 25000 },
+      { name: "NoCookies+TV", cookies: false, client: "tv,web", timeout: 25000 }
     ];
 
     for (const attempt of attempts) {
-      if (attempt.cookies && !hasCookies) continue;
+      if (attempt.cookies && !hasCookies) {
+        console.log(`[ironclad] Skipping ${attempt.name} - Cookies not configured.`);
+        continue;
+      }
       
-      console.log(`[ironclad] Trying Tier: ${attempt.name}`);
+      console.log(`[ironclad] Attempting: ${attempt.name} (Timeout: ${attempt.timeout}ms)`);
       try {
         const flags = [
           '--no-check-certificates', '--no-warnings', '--no-playlist',
@@ -233,15 +246,9 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
         ];
 
         if (attempt.cookies) flags.unshift('--cookies', cookiesPath);
-        
-        // Manual PO tokens ONLY if both are set
-        if (process.env.YOUTUBE_PO_TOKEN && process.env.YOUTUBE_VISITOR_DATA) {
-          flags.push('--extractor-args', `youtube:po_token=${process.env.YOUTUBE_PO_TOKEN};youtube:visitor_data=${process.env.YOUTUBE_VISITOR_DATA}`);
-        }
-
         flags.push(url.trim());
 
-        await runWithTimeout('yt-dlp', flags, 60000); // 60s timeout per tier
+        await runWithTimeout('yt-dlp', flags, attempt.timeout);
         
         const files = fs.readdirSync(downloadsDir);
         const actualFile = files.find(f => f.startsWith(path.basename(rawPath)));
