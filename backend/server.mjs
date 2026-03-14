@@ -200,25 +200,31 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
   res.setHeader("Content-Type", "audio/mpeg");
   res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"`);
   res.setHeader("Transfer-Encoding", "chunked");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Cache-Control", "no-cache");
 
   // Use SPAWN for streaming - no local file storage needed
   // yt-dlp: extract best audio and pipe to stdout
   const ytdlp = spawn('yt-dlp', [
     '-f', 'bestaudio',
     '--no-warnings',
+    '--no-playlist',
     ...cookiesFlag,
     '--extractor-args', 'youtube:player_client=android,ios',
+    '--add-metadata',
     '-o', '-',
     url
   ]);
 
-  // ffmpeg: take yt-dlp output from stdin and convert to standard MP3 for stdout
+  // ffmpeg: encode to standard MP3 (stable headers)
   const ffmpeg = spawn('ffmpeg', [
     '-i', 'pipe:0',
-    '-f', 'mp3',
+    '-vn', // No video
     '-acodec', 'libmp3lame',
-    '-ab', '192k',
+    '-b:a', '192k',
     '-ar', '44100',
+    '-f', 'mp3',
+    '-id3v2_version', '3', // Essential for metadata compatibility
     'pipe:1'
   ]);
 
