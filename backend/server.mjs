@@ -348,13 +348,16 @@ app.get('/api/debug-download', async (req, res) => {
     const { stdout: pipOut } = await execPromise('pip list | grep bgutil || echo "Not Installed"');
     const { stdout: toolsOut } = await execPromise('yt-dlp --version && ffmpeg -version | head -n 1');
     const { stdout: diskOut } = await execPromise('df -h /tmp | tail -n 1');
+    const envKeys = Object.keys(process.env).join(', ');
     
     res.setHeader('Content-Type', 'text/plain');
     res.write(`Ironclad Debug Info\n`);
     res.write(`-------------------\n`);
     res.write(`Queue: ${activeDownloads}/${MAX_CONCURRENT_DOWNLOADS}\n`);
     res.write(`CWD: ${process.cwd()}\n`);
-    res.write(`Cookies: ${hasCookies}\n`);
+    res.write(`Cookies Path: ${cookiesPath}\n`);
+    res.write(`Cookies Status: ${hasCookies}\n`);
+    res.write(`Available Env Vars: ${envKeys}\n`);
     res.write(`bgutil: ${pipOut.trim()}\n`);
     res.write(`Disk /tmp: ${diskOut.trim()}\n`);
     res.write(`Tools:\n${toolsOut.trim()}\n`);
