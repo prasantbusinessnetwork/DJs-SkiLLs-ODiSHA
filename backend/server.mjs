@@ -116,7 +116,7 @@ const downloadLimiter = rateLimit({
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 // --- ROOT ---
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.1) is Online ✅'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.2) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, isFetching: false, TTL: 5 * 60 * 1000 };
@@ -164,7 +164,8 @@ app.get('/api/videos', async (req, res) => {
 const cookiesPath = path.join(os.tmpdir(), 'yt_cookies.txt');
 
 async function setupCookies() {
-  let rawCookies = process.env.YOUTUBE_COOKIES;
+  // Common user error on Railway: variable name with trailing space
+  let rawCookies = process.env.YOUTUBE_COOKIES || process.env['YOUTUBE_COOKIES '] || process.env['YOUTUBE_COOKIES  '];
 
   if (!rawCookies || rawCookies.trim().length === 0) {
     console.warn('[cookies] YOUTUBE_COOKIES env variable is MISSING or empty — downloads may fail for bot-protected videos.');
@@ -308,9 +309,9 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
 
   const hasCookies = fs.existsSync(cookiesPath) && fs.statSync(cookiesPath).size > 10;
 
-  // Detect PO-Token env vars
-  const PO_TOKEN = process.env.YOUTUBE_PO_TOKEN;
-  const VISITOR_DATA = process.env.YOUTUBE_VISITOR_DATA;
+  // Detect PO-Token env vars with support for common trailing space errors
+  const PO_TOKEN = (process.env.YOUTUBE_PO_TOKEN || process.env['YOUTUBE_PO_TOKEN '] || '').trim();
+  const VISITOR_DATA = (process.env.YOUTUBE_VISITOR_DATA || process.env['YOUTUBE_VISITOR_DATA '] || '').trim();
   const hasPOToken = !!(PO_TOKEN && VISITOR_DATA);
 
   try {
@@ -458,13 +459,20 @@ app.get('/api/debug-download', async (req, res) => {
     const cookieFilePreview = cookieFileExists && cookieFileSize > 0
       ? fs.readFileSync(cookiesPath, 'utf8').split('\n').slice(0, 3).join(' | ')
       : 'EMPTY OR NOT FOUND';
-    const rawCookiesEnv = process.env.YOUTUBE_COOKIES;
+    const rawCookiesEnv = process.env.YOUTUBE_COOKIES || process.env['YOUTUBE_COOKIES '] || process.env['YOUTUBE_COOKIES  '];
 
     const { stdout: toolsOut } = await execPromise('yt-dlp --version && ffmpeg -version | head -n 1').catch(e => ({ stdout: e.message }));
     const envStatus = [
       'PORT', 'YOUTUBE_API_KEY', 'YOUTUBE_CHANNEL_ID',
       'YOUTUBE_COOKIES', 'YOUTUBE_PO_TOKEN', 'YOUTUBE_VISITOR_DATA', 'COBALT_INSTANCE_URL'
-    ].map(k => `  ${k}: ${process.env[k]?.trim() ? '✅ Set (' + String(process.env[k]).trim().length + ' chars)' : '❌ Missing'}`).join('\n');
+    ].map(k => {
+      const exact = process.env[k];
+      const withSpace = process.env[k + ' '];
+      const val = exact || withSpace;
+      const status = val?.trim() ? `✅ Set (${String(val).trim().length} chars)` : '❌ Missing';
+      const warning = (!exact && withSpace) ? ' (⚠️ SPACE DETECTED IN KEY NAME)' : '';
+      return `  ${k}: ${status}${warning}`;
+    }).join('\n');
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.write(`=== Ironclad v5.1 Debug ===\n`);
