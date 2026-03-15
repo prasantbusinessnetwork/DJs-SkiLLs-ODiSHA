@@ -1,5 +1,5 @@
 import express from "express";
-import ytdl from "ytdl-core";
+import ytdl from "@distube/ytdl-core";
 import { downloadLimiter } from "../middleware/rateLimiter.js";
 import { logger } from "../utils/logger.js";
 import { getStorageStream } from "../utils/storage.js";
