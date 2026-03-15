@@ -1,5 +1,5 @@
 /**
- * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v6.1 FIX)
+ * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v6.2 FIX)
  *
  * Major Fixes in v6.0:
  * 1. Expanded Try-Loops: 4 tiers (TV, iOS, Web fallbacks).
@@ -21,7 +21,7 @@ import { rateLimit } from 'express-rate-limit';
 const execPromise = promisify(exec);
 const isWindows = process.platform === 'win32';
 const downloadsDir = isWindows ? path.join(process.cwd(), 'downloads') : '/tmp/djs_downloads';
-const BGUTIL_SERVER_PATH = isWindows ? '' : '/app/bgutil-server/server';
+const BGUTIL_SERVER_PATH = isWindows ? '' : path.join(process.cwd(), 'bgutil-server', 'server');
 
 // --- Concurrency Control ---
 let activeDownloads = 0;
@@ -100,7 +100,7 @@ const downloadLimiter = rateLimit({
 
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v6.1) is Online ✅'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v6.2) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, TTL: 5 * 60 * 1000 };
@@ -297,7 +297,7 @@ app.get('/api/test-ytdlp', async (req, res) => {
   const testUrl = req.query.url || 'https://www.youtube.com/watch?v=KsJ2-7cWTyg';
   const client = req.query.client || 'tv,web';
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.write(`yt-dlp Diagnostic Test (v6.1)\n`);
+  res.write(`yt-dlp Diagnostic Test (v6.2)\n`);
   res.write(`URL: ${testUrl}\n`);
   res.write(`Client: ${client}\n`);
   res.write(`Cookies: ${fs.existsSync(cookiesPath) ? 'FOUND' : 'NOT FOUND'}\n\n`);
@@ -342,7 +342,7 @@ app.get('/api/debug-download', async (req, res) => {
     const { stdout: ytVer } = await execPromise('yt-dlp --version').catch(e => ({ stdout: e.message }));
     
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.write(`=== Ironclad v6.1 Debug ===\n`);
+    res.write(`=== Ironclad v6.2 Debug ===\n`);
     res.write(`Timestamp: ${new Date().toISOString()}\n\n`);
     res.write(`--- Cookies ---\n`);
     res.write(`  Path: ${cookiesPath}\n`);
@@ -360,7 +360,7 @@ app.get('/api/debug-download', async (req, res) => {
 });
 
 app.get('/api/inspect-fs', async (req, res) => {
-  const cmd = req.query.cmd || 'ls -la /app';
+  const cmd = req.query.cmd || 'ls -la .';
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   try {
     const { stdout, stderr } = await execPromise(cmd).catch(e => ({ stdout: e.message, stderr: '' }));
@@ -373,4 +373,4 @@ app.get('/api/inspect-fs', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v6.1 Listening on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v6.2 Listening on port ${PORT}`));

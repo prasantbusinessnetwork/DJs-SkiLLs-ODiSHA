@@ -18,13 +18,13 @@ WORKDIR /app
 # INSTALL BGUTIL FROM GIT
 RUN pip install -U git+https://github.com/v8u1i/bgutil-ytdlp-pot-provider.git --break-system-packages
 
-# CLONE AND BUILD SERVER IN /app/bgutil-server
-RUN git clone https://github.com/v8u1i/bgutil-ytdlp-pot-provider.git /app/bgutil-server && \
-    cd /app/bgutil-server/server && \
+# CLONE AND PREPARE SERVER IN ./bgutil-server
+RUN git clone https://github.com/v8u1i/bgutil-ytdlp-pot-provider.git ./bgutil-server && \
+    cd bgutil-server/server && \
     npm install && \
     npm run build
 
-# VERIFY BGUTIL (pointing to the local home)
+# VERIFY (pointing to local clone)
 RUN yt-dlp --verbose --simulate \
     --extractor-args "youtube:server_home=/app/bgutil-server/server" \
     "https://www.youtube.com/watch?v=KsJ2-7cWTyg" 2>&1 | head -20 || true

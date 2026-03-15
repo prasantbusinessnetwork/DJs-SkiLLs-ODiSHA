@@ -7,7 +7,7 @@ cmds = [
   "wget -q https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp",
   "chmod a+rx /usr/local/bin/yt-dlp",
   "pip install -U git+https://github.com/v8u1i/bgutil-ytdlp-pot-provider.git --break-system-packages",
-  "git clone https://github.com/v8u1i/bgutil-ytdlp-pot-provider.git /app/bgutil-server && cd /app/bgutil-server/server && npm install && npm run build",
+  "git clone https://github.com/v8u1i/bgutil-ytdlp-pot-provider.git ./bgutil-server && cd bgutil-server/server && npm install && npm run build",
   "yt-dlp --version"
 ]
 
