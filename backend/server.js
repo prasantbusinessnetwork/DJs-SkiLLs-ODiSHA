@@ -4,6 +4,7 @@ import cors from "cors";
 // Routes
 import healthRoutes from "./routes/health.js";
 import downloadRoutes from "./routes/download.js";
+import videoRoutes from "./routes/videos.js";
 
 // Middleware
 import { errorHandler } from "./middleware/errorHandler.js";
@@ -22,6 +23,7 @@ app.use(express.json());
 // Main Supported Routes
 app.use("/api/health", healthRoutes);
 app.use("/api/download", downloadRoutes); // Protects streaming via Rate Limiter
+app.use("/api", videoRoutes); // Maps to /api/videos and /api/latest
 
 // Fallback for 404
 app.use((req, res) => {

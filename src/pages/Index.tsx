@@ -146,21 +146,13 @@ const Index = () => {
         )}
 
         {/* Section 2: All Videos (Everything Else) */}
-        {allOtherVideos.length > 0 ? (
+        {videos.length > 0 && (
           <div className="mb-20">
             <div className="flex items-center justify-between mb-2">
                <span className="text-[10px] font-bold text-primary tracking-[0.2em] uppercase">MP3 format ready for all</span>
             </div>
-            <MixSection icon="🎧" title="All Videos" mixes={allOtherVideos} />
+            <MixSection icon="🎧" title="All Videos" mixes={allOtherVideos.length > 0 ? allOtherVideos : videos.map(v => ({...v, tag: v.tag || "Mix", thumbnail: v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`}))} />
           </div>
-        ) : (
-          !isLoading && videos.length > 0 && (
-            <div className="mb-20 text-center py-16 border border-dashed border-border rounded-[2.5rem] bg-secondary/5">
-                <p className="text-muted-foreground text-sm font-medium">
-                  You've loaded the entire library. More fire coming soon!
-                </p>
-            </div>
-          )
         )}
 
         {/* About Section */}
