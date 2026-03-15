@@ -88,10 +88,15 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
           <h4 className="truncate font-semibold text-sm text-foreground/90 leading-tight">{title}</h4>
           <p className="truncate text-[11px] text-muted-foreground mt-0.5">{artist}</p>
         </div>
-        <button
-          onClick={handleDownload}
-          disabled={!videoId || dlState === "downloading"}
-          title={dlState === "error" ? "Download failed — click to retry" : "Download MP3"}
+        <a
+          href={`${API_BASE}/api/download?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&title=${encodeURIComponent(title || "audio")}`}
+          download={`${title?.replace(/[^\w\s-]/gi, "").trim() || "song"}.mp3`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => {
+            e.stopPropagation();
+            toast.success("✅ Download started!");
+          }}
           className={`flex-shrink-0 flex h-8 items-center gap-2 rounded-lg px-3 text-[11px] font-bold transition-all
             ${dlState === "success" ? "bg-emerald-600 text-white" :
               dlState === "error" ? "bg-red-700 text-white" :
@@ -101,7 +106,7 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
         >
           {dlIcon}
           <span className="hidden sm:inline">{dlLabel}</span>
-        </button>
+        </a>
       </div>
     </div>
   );
