@@ -352,11 +352,11 @@ app.get('/api/debug-download', async (req, res) => {
 });
 
 app.get('/api/inspect-fs', async (req, res) => {
-  const p = req.query.path || '/usr/local/lib/python3.11/dist-packages/bgutil_ytdlp_pot_provider';
+  const query = req.query.q || 'bgutil_ytdlp_pot_provider';
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   try {
-    const { stdout } = await execPromise(`ls -R ${p}`).catch(e => ({ stdout: e.message }));
-    res.write(`Inspection of: ${p}\n\n`);
+    const { stdout } = await execPromise(`find / -name "${query}" -type d 2>/dev/null | head -n 10`).catch(e => ({ stdout: e.message }));
+    res.write(`Searching for: ${query}\n\n`);
     res.write(stdout);
     res.end();
   } catch (err) {
