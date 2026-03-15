@@ -116,7 +116,7 @@ const downloadLimiter = rateLimit({
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 // --- ROOT ---
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.2) is Online ✅'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.3) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, isFetching: false, TTL: 5 * 60 * 1000 };
@@ -449,6 +449,36 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
   } finally {
     activeDownloads--;
   }
+});
+
+// --- Diagnostic: Run real yt-dlp test ---
+app.get('/api/test-ytdlp', async (req, res) => {
+  const testUrl = req.query.url || 'https://www.youtube.com/watch?v=KsJ2-7cWTyg';
+  const hasCookies = fs.existsSync(cookiesPath);
+  
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.write(`yt-dlp Diagnostic Test\n`);
+  res.write(`URL: ${testUrl}\n`);
+  res.write(`Cookies: ${hasCookies ? 'FOUND' : 'NOT FOUND'}\n\n`);
+
+  const flags = [
+    '--no-check-certificates', '--no-warnings', '--no-playlist',
+    '--add-header', 'Referer:https://www.youtube.com/',
+    '-f', 'ba/b',
+    '-v', // VERBOSE
+    '--simulate', // DON'T actually download
+    '--print', 'filename'
+  ];
+  if (hasCookies) flags.unshift('--cookies', cookiesPath);
+  flags.push(testUrl);
+
+  const proc = spawn('yt-dlp', flags);
+  proc.stdout.on('data', (d) => res.write(`[STDOUT] ${d}`));
+  proc.stderr.on('data', (d) => res.write(`[STDERR] ${d}`));
+  proc.on('close', (code) => {
+    res.write(`\nProcess exited with code ${code}`);
+    res.end();
+  });
 });
 
 // --- Debug Endpoint ---
