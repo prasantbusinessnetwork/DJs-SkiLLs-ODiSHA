@@ -1,47 +1,50 @@
 import express from "express";
 import cors from "cors";
-import ytdl from "ytdl-core";
+
+// Routes
+import healthRoutes from "./routes/health.js";
+import downloadRoutes from "./routes/download.js";
+
+// Middleware
+import { errorHandler } from "./middleware/errorHandler.js";
+import { logger } from "./utils/logger.js";
 
 const app = express();
-
-app.use(cors());
-
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", message: "Server running" });
-});
-
-app.get("/api/download", async (req, res) => {
-  const url = req.query.url;
-
-  if (!url) {
-    return res.status(400).json({ error: "Missing URL" });
-  }
-
-  try {
-    const info = await ytdl.getInfo(url);
-    const title = info.videoDetails.title.replace(/[^\w\s]/gi, "");
-
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Disposition", `attachment; filename="${title}.mp3"`);
-
-    ytdl(url, {
-      quality: "highestaudio",
-      filter: "audioonly"
-    }).pipe(res);
-
-  } catch (error) {
-    console.error("Download error:", error);
-    if (!res.headersSent) {
-      res.status(500).json({
-        error: "download_failed",
-        message: "Audio extraction failed"
-      });
-    }
-  }
-});
-
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+// Security & Utility Middleware
+app.use(cors({
+  origin: '*', // Allows Vercel frontend
+  methods: ['GET', 'OPTIONS'],
+}));
+app.use(express.json());
+
+// Main Supported Routes
+app.use("/api/health", healthRoutes);
+app.use("/api/download", downloadRoutes); // Protects streaming via Rate Limiter
+
+// Fallback for 404
+app.use((req, res) => {
+  res.status(404).json({ error: "not_found", message: "Endpoint not found" });
+});
+
+// Global Error Handler (Prevents server crashes)
+app.use(errorHandler);
+
+// Start the server safely
+const server = app.listen(PORT, '0.0.0.0', () => {
+  logger.info(`Production Backend running on port ${PORT}`);
+});
+
+// Graceful shutdown protection
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection at:', reason);
+});
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception thrown:', error);
+  // Give current reqs 5 seconds to finish, then cleanly shut down
+  server.close(() => {
+    process.exit(1);
+  });
+  setTimeout(() => process.exit(1), 5000).unref();
 });
