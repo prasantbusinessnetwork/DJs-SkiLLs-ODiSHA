@@ -26,60 +26,73 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
     if (!videoId || dlState === "downloading") return;
 
     setDlState("downloading");
-    
+
     const youtubeFullUrl = `https://www.youtube.com/watch?v=${videoId}`;
     const downloadEndpoint = `${API_BASE}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(title || "audio")}`;
 
     try {
       console.log(`[MixCard] Download → ${downloadEndpoint}`);
-      
+      const toastId = toast.loading("Preparing your MP3...");
+
       const response = await fetch(downloadEndpoint);
+
+      toast.dismiss(toastId);
+
       if (!response.ok) {
-        const errorText = await response.text();
         let errorMessage = `Server error: ${response.status}`;
         try {
-          const errJson = JSON.parse(errorText);
+          const errJson = await response.json();
           errorMessage = errJson.message || errorMessage;
-        } catch(e) {}
+        } catch (_) {}
         throw new Error(errorMessage);
       }
 
       const contentType = response.headers.get("Content-Type") || "";
-      
+
       if (contentType.includes("audio") || contentType.includes("octet-stream")) {
+        // Direct MP3 blob download
         const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
+        const blobUrl = window.URL.createObjectURL(blob);
         const link = document.createElement("a");
-        link.href = url;
-        link.setAttribute("download", `${title || "audio"}.mp3`);
+        link.href = blobUrl;
+        link.setAttribute("download", `${(title || "audio").replace(/[^\w\s-]/gi, "").trim()}.mp3`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-        
+        window.URL.revokeObjectURL(blobUrl);
+
         setDlState("success");
-        toast.success("Download started!");
+        toast.success("✅ MP3 Downloaded!");
       } else {
-        // If it's a redirect or a secondary page
-        window.open(response.url, "_blank");
+        // Redirect fallback (e.g. savefrom.net)
+        window.open(response.url, "_blank", "noopener,noreferrer");
         setDlState("success");
-        toast.success("Opening download link...");
+        toast.info("Opening download page...");
       }
 
       setTimeout(() => setDlState("idle"), 5000);
 
     } catch (error: any) {
-      console.error("[MixCard] Download fetch failed or CORS error, falling back to direct open:", error);
-      // Fallback: If fetch fails (usually CORS on 302 redirect), open directly in new tab
-      window.open(downloadEndpoint, "_blank");
-      setDlState("success");
-      toast.success("Opening download link...");
-      setTimeout(() => setDlState("idle"), 5000);
+      console.error("[MixCard] Download error:", error);
+      toast.dismiss();
+
+      if (error?.message?.includes("server_busy") || error?.message?.includes("429")) {
+        toast.warning("⏳ Server is busy. Try in 30 seconds.");
+      } else if (error?.message?.includes("daily_limit")) {
+        toast.error("❌ Daily limit reached. Try tomorrow.");
+      } else {
+        toast.error("❌ Download failed. Trying fallback...");
+        // Open backend URL — last resort (user sees savefrom or error page)
+        setTimeout(() => window.open(downloadEndpoint, "_blank", "noopener,noreferrer"), 500);
+      }
+
+      setDlState("error");
+      setTimeout(() => setDlState("idle"), 6000);
     }
   };
 
   const dlLabel =
-    dlState === "downloading" ? "Downloading..." :
+    dlState === "downloading" ? "Preparing..." :
       dlState === "success" ? "Saved!" :
         dlState === "error" ? "Retry" :
           "Download";
@@ -140,9 +153,10 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
         <button
           onClick={handleDownload}
           disabled={!videoId || dlState === "downloading"}
+          title={dlState === "error" ? "Download failed — click to retry" : "Download MP3"}
           className={`flex-shrink-0 flex h-8 items-center gap-2 rounded-lg px-3 text-[11px] font-bold transition-all
             ${dlState === "success" ? "bg-emerald-600 text-white" :
-              dlState === "error" ? "bg-zinc-700 text-white" :
+              dlState === "error" ? "bg-red-700 text-white" :
                 "bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary"}
             ${dlState === "downloading" ? "opacity-70 cursor-wait bg-zinc-800" : ""}
           `}

@@ -1,12 +1,13 @@
 /**
- * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v4.0)
- * 
- * Major Fixes:
- * 1. bgutil-ytdlp-pot-provider: Automatic PO-Token bypass
- * 2. Concurrency Control: Max 3 downloads to prevent memory crashes
- * 3. 4-Tier Hardened Strategy: Cookies/No-Cookies + Multiple Clients
- * 4. Multi-Tier Proxy: Private Cobalt -> Public Cobalt -> Manual Fallbacks
- * 5. CORS Bridge: Serverside streaming of external files
+ * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v5.0)
+ *
+ * Fixes in v5.0:
+ * 1. Cobalt API updated to v10 format (Accept: application/json header)
+ * 2. Fixed clearTimeout(timer) bug in Cobalt loop (was referencing undefined var)
+ * 3. Removed dead fallback services (loader.to, yt-download.org)
+ * 4. savefrom redirect as true last resort
+ * 5. yt-dlp PO-Token support via bgutil-ytdlp-pot-provider plugin flags
+ * 6. Cleaner error handling and logging
  */
 
 import express from 'express';
@@ -36,7 +37,7 @@ if (!fs.existsSync(downloadsDir)) {
 async function startupMaintenance() {
   console.log('[server] Running startup maintenance...');
   try {
-    // 1. Concurrent Cache Clear (move it to startup only)
+    // 1. Clear yt-dlp cache
     exec('yt-dlp --rm-cache-dir', (err) => {
       if (!err) console.log('[server] yt-dlp cache cleared.');
     });
@@ -45,7 +46,7 @@ async function startupMaintenance() {
     const updateTimeout = 30000;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), updateTimeout);
-    
+
     exec('yt-dlp -U', { signal: controller.signal }, (err, stdout) => {
       clearTimeout(timer);
       if (err) console.warn('[server] yt-dlp update skipped or timed out:', err.message);
@@ -57,11 +58,12 @@ async function startupMaintenance() {
     const now = Date.now();
     for (const file of files) {
       const filePath = path.join(downloadsDir, file);
-      const stats = fs.statSync(filePath);
-      // Delete anything older than 1 hour on startup
-      if (now - stats.mtimeMs > 3600000) {
-        fs.unlinkSync(filePath);
-      }
+      try {
+        const stats = fs.statSync(filePath);
+        if (now - stats.mtimeMs > 3600000) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (_) {}
     }
     console.log('[server] Startup cleanup finished.');
   } catch (e) {
@@ -77,11 +79,12 @@ setInterval(() => {
     const now = Date.now();
     for (const file of files) {
       const filePath = path.join(downloadsDir, file);
-      // Ignore if it's currently being written (simple check by age)
-      const stats = fs.statSync(filePath);
-      if (now - stats.mtimeMs > 1800000) { // 30 mins
-        fs.unlinkSync(filePath);
-      }
+      try {
+        const stats = fs.statSync(filePath);
+        if (now - stats.mtimeMs > 1800000) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (_) {}
     }
   } catch (e) {
     console.error('[server] Scheduled cleanup failed:', e);
@@ -101,7 +104,7 @@ app.use(cors({
 
 // --- Rate Limiter (100 downloads per IP per 24h) ---
 const downloadLimiter = rateLimit({
-  windowMs: 24 * 60 * 60 * 1000, 
+  windowMs: 24 * 60 * 60 * 1000,
   max: 100,
   message: { error: "daily_limit_reached", message: "Daily limit reached (100). Try again tomorrow." },
   standardHeaders: true,
@@ -112,22 +115,21 @@ const downloadLimiter = rateLimit({
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 // --- ROOT ---
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v4.0) is Online'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.0) is Online'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
-// Note: Keeping existing videoCache/fetch logic for stability
 const videoCache = { data: null, lastFetched: 0, isFetching: false, TTL: 5 * 60 * 1000 };
 const fallbackVideos = [
   { title: "Aaj Ki Raat (Remix)", artist: "DJs SkILLs ODISHA", tag: "Latest", youtubeUrl: "https://www.youtube.com/watch?v=KsJ2-7cWTyg", videoId: "KsJ2-7cWTyg", thumbnail: "https://img.youtube.com/vi/KsJ2-7cWTyg/mqdefault.jpg" },
 ];
 
-async function fetchFullChannelVideos(apiKey, channelId, limit = 500) {
-  let videos = [];
+async function fetchFullChannelVideos(apiKey, channelId) {
   try {
     const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&order=date&maxResults=50&type=video&key=${apiKey}`;
     const response = await fetch(url);
     if (!response.ok) return [];
     const data = await response.json();
+    if (!data.items) return [];
     return data.items.map(item => ({
       title: item.snippet.title,
       artist: item.snippet.channelTitle,
@@ -158,42 +160,119 @@ app.get('/api/videos', async (req, res) => {
   res.json(videoCache.data || fallbackVideos);
 });
 
-const cookiesPath = path.join(os.tmpdir(), 'yt_cookies.txt'); // Use temp dir for reliability
+const cookiesPath = path.join(os.tmpdir(), 'yt_cookies.txt');
 
 async function setupCookies() {
   const rawCookies = process.env.YOUTUBE_COOKIES;
   if (rawCookies) {
     try {
       let cookieData = rawCookies.replace(/\\n/g, '\n').trim();
-      // Basic Netscape format repair
       if (cookieData.includes('.youtube.com') && !cookieData.includes('\t')) {
         cookieData = cookieData.replace(/ +/g, '\t');
       }
       fs.writeFileSync(cookiesPath, cookieData, { mode: 0o644 });
-      console.log(`[server] Cookies configured successfully. Size: ${cookieData.length} bytes`);
+      console.log(`[server] Cookies configured. Size: ${cookieData.length} bytes`);
     } catch (e) {
       console.error('[server] Error writing cookies:', e.message);
     }
   } else {
-    console.warn('[server] YOUTUBE_COOKIES environment variable is MISSING!');
+    console.warn('[server] YOUTUBE_COOKIES env variable is MISSING — downloads may fail for bot-protected videos.');
   }
 }
 setupCookies();
 
+// ─── Helper: Run command with timeout ──────────────────────────────
+const runWithTimeout = (cmd, args, timeoutMs) => {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, args);
+    let stderr = '';
+    const timer = setTimeout(() => { proc.kill('SIGKILL'); reject(new Error('timeout')); }, timeoutMs);
+    proc.stderr.on('data', (d) => stderr += d.toString());
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error(stderr.trim() || `Exit ${code}`));
+    });
+    proc.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+};
+
+// ─── Helper: Try Cobalt instance (v10 API) ─────────────────────────
+async function tryCobaltInstance(instance, videoId, safeTitle, res) {
+  const cobaltUrl = `${instance.replace(/\/$/, '')}/`;
+  const controller = new AbortController();
+  const cobaltTimer = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    // Cobalt v10 API: POST to root "/" with Accept: application/json
+    const cobRes = await fetch(cobaltUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        downloadMode: 'audio',
+        audioFormat: 'mp3',
+        filenameStyle: 'pretty',
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(cobaltTimer);
+
+    if (!cobRes.ok) {
+      console.warn(`[cobalt] ${instance} returned HTTP ${cobRes.status}`);
+      return false;
+    }
+
+    const data = await cobRes.json();
+    // v10 returns { status: "tunnel" | "redirect" | "stream", url: "..." }
+    const dlLink = data.url;
+    if (!dlLink) {
+      console.warn(`[cobalt] ${instance} — no URL in response: ${JSON.stringify(data).slice(0, 120)}`);
+      return false;
+    }
+
+    console.log(`[cobalt] Proxying stream from: ${instance}`);
+    const streamRes = await fetch(dlLink, { signal: AbortSignal.timeout(30000) });
+    if (!streamRes.ok) {
+      console.warn(`[cobalt] Stream fetch failed: ${streamRes.status}`);
+      return false;
+    }
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.mp3"`);
+    const nodeStream = Readable.fromWeb(streamRes.body);
+    nodeStream.pipe(res);
+    await new Promise((resolve, reject) => {
+      nodeStream.on('end', resolve);
+      nodeStream.on('error', reject);
+    });
+    return true;
+  } catch (e) {
+    clearTimeout(cobaltTimer);
+    console.warn(`[cobalt] ${instance} failed: ${e.message}`);
+    return false;
+  }
+}
+
 // --- Download Route ---
-app.get("/api/download", downloadLimiter, async (req, res) => {
+app.get('/api/download', downloadLimiter, async (req, res) => {
   const url = req.query.url;
-  const requestedTitle = req.query.title ? String(req.query.title) : "audio";
-  const safeTitle = requestedTitle.replace(/[^\w\s-]/gi, '').trim() || "audio";
+  const requestedTitle = req.query.title ? String(req.query.title) : 'audio';
+  const safeTitle = requestedTitle.replace(/[^\w\s-]/gi, '').trim() || 'audio';
 
-  if (!url) return res.status(400).json({ error: "missing_url" });
+  if (!url) return res.status(400).json({ error: 'missing_url' });
 
-  // 1. Concurrency Check
   if (activeDownloads >= MAX_CONCURRENT_DOWNLOADS) {
-    return res.status(429).json({ 
-      error: "server_busy", 
-      message: "Server busy. Try again in 30 seconds.",
-      retryAfter: 30 
+    return res.status(429).json({
+      error: 'server_busy',
+      message: 'Server busy. Try again in 30 seconds.',
+      retryAfter: 30,
     });
   }
 
@@ -201,166 +280,166 @@ app.get("/api/download", downloadLimiter, async (req, res) => {
   const tempId = `dl_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
   const rawPath = path.join(downloadsDir, `${tempId}_raw`);
   const mp3Path = path.join(downloadsDir, `${tempId}.mp3`);
-  
+
   const hasCookies = fs.existsSync(cookiesPath) && fs.statSync(cookiesPath).size > 10;
 
-  const runWithTimeout = (cmd, args, timeoutMs) => {
-    return new Promise((resolve, reject) => {
-      const proc = spawn(cmd, args);
-      let stderr = '';
-      const timer = setTimeout(() => { proc.kill('SIGKILL'); reject(new Error('timeout')); }, timeoutMs);
-      proc.stderr.on('data', (d) => stderr += d.toString());
-      proc.on('close', (code) => {
-        clearTimeout(timer);
-        if (code === 0) resolve();
-        else reject(new Error(stderr.trim() || `Exit ${code}`));
-      });
-    });
-  };
+  // Detect PO-Token env vars
+  const PO_TOKEN = process.env.YOUTUBE_PO_TOKEN;
+  const VISITOR_DATA = process.env.YOUTUBE_VISITOR_DATA;
+  const hasPOToken = !!(PO_TOKEN && VISITOR_DATA);
 
   try {
     console.log(`[ironclad] Request URL: ${url} (Queue: ${activeDownloads})`);
 
+    // ── Build yt-dlp attempt list ──────────────────────────────────
+    // Each attempt: { name, cookies, client, potoken }
+    const attempts = [];
+
+    if (hasCookies && hasPOToken) {
+      attempts.push({ name: 'Cookies+POToken+TV', cookies: true, client: 'tv', potoken: true });
+      attempts.push({ name: 'Cookies+POToken+Web', cookies: true, client: 'web', potoken: true });
+    }
+    if (hasCookies) {
+      attempts.push({ name: 'Cookies+TV', cookies: true, client: 'tv,web', potoken: false });
+      attempts.push({ name: 'Cookies+iOS', cookies: true, client: 'ios,web', potoken: false });
+    }
+    // Always try no-cookies as fallback
+    attempts.push({ name: 'NoCookies+TV', cookies: false, client: 'tv,web', potoken: false });
+    attempts.push({ name: 'NoCookies+mweb', cookies: false, client: 'mweb,web', potoken: false });
+
     let success = false;
-    const attempts = [
-      { name: "Cookies+TV", cookies: true, client: "tv,web", timeout: 25000 },
-      { name: "Cookies+iOS", cookies: true, client: "ios,web", timeout: 25000 },
-      { name: "NoCookies+TV", cookies: false, client: "tv,web", timeout: 25000 }
-    ];
 
     for (const attempt of attempts) {
-      if (attempt.cookies && !hasCookies) {
-        console.log(`[ironclad] Skipping ${attempt.name} - Cookies not configured.`);
-        continue;
-      }
-      
-      console.log(`[ironclad] Attempting: ${attempt.name} (Timeout: ${attempt.timeout}ms)`);
+      console.log(`[ironclad] Attempting: ${attempt.name}`);
       try {
         const flags = [
           '--no-check-certificates', '--no-warnings', '--no-playlist',
           '--add-header', 'Referer:https://www.youtube.com/',
-          '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+          '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           '-f', 'ba/b',
           '--extractor-args', `youtube:player_client=${attempt.client}`,
           '-o', `${rawPath}.%(ext)s`,
         ];
 
-        if (attempt.cookies) flags.unshift('--cookies', cookiesPath);
+        // Add cookies if available
+        if (attempt.cookies && hasCookies) {
+          flags.unshift('--cookies', cookiesPath);
+        }
+
+        // Add PO-Token if available and requested
+        if (attempt.potoken && hasPOToken) {
+          flags.push('--extractor-args', `youtube:po_token=web+${PO_TOKEN}`);
+          flags.push('--extractor-args', `youtube:visitor_data=${VISITOR_DATA}`);
+        }
+
         flags.push(url.trim());
 
-        await runWithTimeout('yt-dlp', flags, attempt.timeout);
-        
+        await runWithTimeout('yt-dlp', flags, 30000);
+
+        // Find the downloaded file
         const files = fs.readdirSync(downloadsDir);
         const actualFile = files.find(f => f.startsWith(path.basename(rawPath)));
-        if (actualFile) {
-          const fullPath = path.join(downloadsDir, actualFile);
-          await runWithTimeout('ffmpeg', [
-            '-i', fullPath, '-acodec', 'libmp3lame', '-b:a', '192k', '-ar', '44100', '-y', mp3Path
-          ], 40000);
-          
-          if (fs.existsSync(mp3Path)) {
-            success = true;
-            fs.unlink(fullPath, () => {});
-            break;
-          }
+        if (!actualFile) throw new Error('Downloaded file not found');
+
+        const fullPath = path.join(downloadsDir, actualFile);
+
+        // Convert to MP3
+        await runWithTimeout('ffmpeg', [
+          '-i', fullPath,
+          '-vn',
+          '-acodec', 'libmp3lame',
+          '-b:a', '192k',
+          '-ar', '44100',
+          '-y', mp3Path,
+        ], 60000);
+
+        // Clean up raw file
+        fs.unlink(fullPath, () => {});
+
+        if (fs.existsSync(mp3Path) && fs.statSync(mp3Path).size > 1000) {
+          success = true;
+          console.log(`[ironclad] SUCCESS with ${attempt.name}`);
+          break;
+        } else {
+          throw new Error('MP3 output empty or missing');
         }
       } catch (e) {
-        console.warn(`[ironclad] Tier ${attempt.name} failed: ${e.message}`);
-        await new Promise(r => setTimeout(r, 1000));
+        console.warn(`[ironclad] Tier ${attempt.name} failed: ${e.message.slice(0, 200)}`);
+        // Clean up any partial files
+        try { const f = fs.readdirSync(downloadsDir).find(f => f.startsWith(path.basename(rawPath))); if (f) fs.unlinkSync(path.join(downloadsDir, f)); } catch (_) {}
+        await new Promise(r => setTimeout(r, 800));
       }
     }
 
-    // --- Proxy/Redirection Safety Net ---
-    if (!success) {
-      console.log('[ironclad] Local tiers failed. Falling back to Proxy tiers...');
-      const videoId = url.match(/(?:v=|\/embed\/|shorts\/|youtu\.be\/)([^&?/]+)/)?.[1] || url;
-      
-      const cobaltInstances = [];
-      if (process.env.COBALT_INSTANCE_URL) cobaltInstances.push(process.env.COBALT_INSTANCE_URL);
-      cobaltInstances.push("https://co.wuk.sh", "https://cobalt.katze.moe", "https://cobalt.ari.lt", "https://cobalt.tools");
-
-      for (const instance of cobaltInstances) {
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 15000);
-          const cobUrl = `${instance.replace(/\/$/, '')}/api/json`;
-          
-          const cobRes = await fetch(cobUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, isAudioOnly: true, aFormat: "mp3", filenameStyle: "pretty" }),
-            signal: controller.signal
-          });
-          clearTimeout(timer);
-
-          if (cobRes.ok) {
-            const data = await cobRes.json();
-            const dlLink = data.url || data?.data?.url;
-            if (dlLink) {
-              console.log(`[ironclad] Proxying stream from: ${instance}`);
-              const streamRes = await fetch(dlLink);
-              if (streamRes.ok) {
-                res.setHeader("Content-Type", "audio/mpeg");
-                res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"`);
-                const nodeStream = Readable.fromWeb(streamRes.body);
-                return nodeStream.pipe(res);
-              }
-            }
-          }
-        } catch (e) { console.warn(`[ironclad] Proxy ${instance} failed: ${e.message}`); }
-      }
-
-      // --- Universal Last Resort Fallbacks (HEAD checks) ---
-      const finalFallbacks = [
-        { name: "yt-download", url: `https://api.yt-download.org/v1/button/mp3/${videoId}` },
-        { name: "loader.to", url: `https://loader.to/api/button/?url=${videoId}&f=mp3` }
-      ];
-      for (const f of finalFallbacks) {
-        try {
-          const check = await fetch(f.url, { method: 'HEAD', signal: AbortSignal.timeout(3000) });
-          if (check.ok) return res.redirect(f.url);
-        } catch(e) {}
-      }
-
-      return res.redirect(`https://savefrom.net/?url=https://www.youtube.com/watch?v=${videoId}`);
+    // ── Serve the MP3 if local download succeeded ──────────────────
+    if (success) {
+      console.log(`[ironclad] Serving local MP3: ${mp3Path}`);
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.mp3"`);
+      res.setHeader('Content-Length', fs.statSync(mp3Path).size);
+      const reader = fs.createReadStream(mp3Path);
+      reader.pipe(res);
+      reader.on('end', () => { fs.unlink(mp3Path, () => {}); });
+      reader.on('error', (e) => {
+        console.error('[ironclad] Stream error:', e.message);
+        if (!res.headersSent) res.status(500).json({ error: 'stream_error' });
+      });
+      return; // Don't go to finally's activeDownloads-- yet (piping is async) — handled below
     }
 
-    // --- Serve Perfect MP3 ---
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.mp3"`);
-    const reader = fs.createReadStream(mp3Path);
-    reader.pipe(res);
-    reader.on('end', () => {
-      fs.unlink(mp3Path, () => {});
-    });
+    // ── Cobalt Fallback (v10 API) ──────────────────────────────────
+    console.log('[ironclad] Local tiers failed. Trying Cobalt v10 API...');
+    const videoId = url.match(/(?:v=|\/embed\/|shorts\/|youtu\.be\/)([^&?/]+)/)?.[1] || url;
+
+    // Working Cobalt v10 public instances
+    const cobaltInstances = [];
+    if (process.env.COBALT_INSTANCE_URL) cobaltInstances.push(process.env.COBALT_INSTANCE_URL);
+    cobaltInstances.push(
+      'https://cobalt.tools',
+      'https://cobalt.nsfwzone.xyz',
+      'https://cobalt.ari.lt',
+      'https://cobalt.synzr.space',
+    );
+
+    for (const instance of cobaltInstances) {
+      try {
+        const done = await tryCobaltInstance(instance, videoId, safeTitle, res);
+        if (done) {
+          console.log(`[ironclad] Cobalt success via: ${instance}`);
+          return; // Response already sent inside tryCobaltInstance
+        }
+      } catch (e) {
+        console.warn(`[ironclad] Cobalt ${instance} exception: ${e.message}`);
+      }
+    }
+
+    // ── True Last Resort: Redirect to savefrom ────────────────────
+    console.warn('[ironclad] All tiers failed. Sending savefrom redirect.');
+    return res.redirect(`https://savefrom.net/?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + videoId)}`);
 
   } catch (err) {
     console.error(`[ironclad] CRITICAL: ${err.message}`);
-    if (!res.headersSent) res.status(500).json({ error: "failed", message: err.message });
+    if (!res.headersSent) res.status(500).json({ error: 'failed', message: 'Download failed. Please try again.' });
   } finally {
     activeDownloads--;
   }
 });
 
+// --- Debug Endpoint ---
 app.get('/api/debug-download', async (req, res) => {
   try {
     const hasCookies = fs.existsSync(cookiesPath) ? `${fs.statSync(cookiesPath).size} bytes` : 'Not Found';
-    const { stdout: pipOut } = await execPromise('pip list | grep bgutil || echo "Not Installed"');
-    const { stdout: toolsOut } = await execPromise('yt-dlp --version && ffmpeg -version | head -n 1');
-    const { stdout: diskOut } = await execPromise('df -h /tmp | tail -n 1');
-    const envKeys = Object.keys(process.env).join(', ');
-    
+    const { stdout: toolsOut } = await execPromise('yt-dlp --version && ffmpeg -version | head -n 1').catch(e => ({ stdout: e.message }));
+    const envKeys = ['PORT', 'YOUTUBE_API_KEY', 'YOUTUBE_CHANNEL_ID', 'YOUTUBE_COOKIES', 'YOUTUBE_PO_TOKEN', 'YOUTUBE_VISITOR_DATA', 'COBALT_INSTANCE_URL']
+      .map(k => `${k}: ${process.env[k] ? '✅ Set' : '❌ Missing'}`)
+      .join('\n');
+
     res.setHeader('Content-Type', 'text/plain');
-    res.write(`Ironclad Debug Info\n`);
-    res.write(`-------------------\n`);
+    res.write(`=== Ironclad v5.0 Debug ===\n`);
     res.write(`Queue: ${activeDownloads}/${MAX_CONCURRENT_DOWNLOADS}\n`);
-    res.write(`CWD: ${process.cwd()}\n`);
-    res.write(`Cookies Path: ${cookiesPath}\n`);
-    res.write(`Cookies Status: ${hasCookies}\n`);
-    res.write(`Available Env Vars: ${envKeys}\n`);
-    res.write(`bgutil: ${pipOut.trim()}\n`);
-    res.write(`Disk /tmp: ${diskOut.trim()}\n`);
-    res.write(`Tools:\n${toolsOut.trim()}\n`);
+    res.write(`Cookies: ${hasCookies}\n`);
+    res.write(`\nEnvironment:\n${envKeys}\n`);
+    res.write(`\nTools:\n${toolsOut.trim()}\n`);
     res.end();
   } catch (e) {
     res.status(500).send(`Debug Error: ${e.message}`);
@@ -369,7 +448,7 @@ app.get('/api/debug-download', async (req, res) => {
 
 app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
 
-app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v4.0 Listening on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v5.0 Listening on port ${PORT}`));
 
 process.on('SIGTERM', () => process.exit(0));
 process.on('SIGINT', () => process.exit(0));

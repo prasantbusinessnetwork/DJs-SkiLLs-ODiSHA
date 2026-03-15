@@ -33,48 +33,59 @@ const VideoItem = ({ video }: VideoItemProps) => {
 
     try {
       console.log(`[AllVideos] Download → ${downloadEndpoint}`);
+      const toastId = toast.loading("Preparing your MP3...");
 
       const response = await fetch(downloadEndpoint);
+      toast.dismiss(toastId);
+
       if (!response.ok) {
-        const errorText = await response.text();
         let errorMessage = `Server error: ${response.status}`;
         try {
-          const errJson = JSON.parse(errorText);
+          const errJson = await response.json();
           errorMessage = errJson.message || errorMessage;
-        } catch(e) {}
+        } catch (_) {}
         throw new Error(errorMessage);
       }
 
       const contentType = response.headers.get("Content-Type") || "";
-      
+
       if (contentType.includes("audio") || contentType.includes("octet-stream")) {
         const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
+        const blobUrl = window.URL.createObjectURL(blob);
         const link = document.createElement("a");
-        link.href = url;
+        link.href = blobUrl;
         link.setAttribute("download", `${sanitize(video.title || "audio")}.mp3`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-        
+        window.URL.revokeObjectURL(blobUrl);
+
         setDlState("ready");
-        toast.success("Download started!");
+        toast.success("✅ MP3 Downloaded!");
       } else {
-        window.open(response.url, "_blank");
+        // Redirect fallback (savefrom etc.)
+        window.open(response.url, "_blank", "noopener,noreferrer");
         setDlState("ready");
-        toast.success("Opening download link...");
+        toast.info("Opening download page...");
       }
 
       setTimeout(() => setDlState("idle"), 5000);
 
     } catch (err: any) {
-      console.error("[AllVideos] Download fetch failed or CORS error, falling back to direct open:", err);
-      // Fallback: If fetch fails (usually CORS on 302 redirect), open directly in new tab
-      window.open(downloadEndpoint, "_blank");
-      setDlState("ready");
-      toast.success("Opening download link...");
-      setTimeout(() => setDlState("idle"), 5000);
+      console.error("[AllVideos] Download error:", err);
+      toast.dismiss();
+
+      if (err?.message?.includes("server_busy") || err?.message?.includes("429")) {
+        toast.warning("⏳ Server is busy. Try in 30 seconds.");
+      } else if (err?.message?.includes("daily_limit")) {
+        toast.error("❌ Daily limit reached. Try tomorrow.");
+      } else {
+        toast.error("❌ Download failed. Trying fallback...");
+        setTimeout(() => window.open(downloadEndpoint, "_blank", "noopener,noreferrer"), 500);
+      }
+
+      setDlState("failed");
+      setTimeout(() => setDlState("idle"), 6000);
     }
   };
 
