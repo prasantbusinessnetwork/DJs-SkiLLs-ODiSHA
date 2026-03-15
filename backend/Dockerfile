@@ -6,24 +6,21 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     wget \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 RUN wget -q https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp \
     -O /usr/local/bin/yt-dlp && \
     chmod a+rx /usr/local/bin/yt-dlp
 
+# INSTALL BGUTIL AND CLONE SERVER
 RUN pip install -U bgutil-ytdlp-pot-provider --break-system-packages 2>/dev/null || \
-    pip3 install -U bgutil-ytdlp-pot-provider --break-system-packages 2>/dev/null || \
-    echo "bgutil install skipped"
+    pip3 install -U bgutil-ytdlp-pot-provider --break-system-packages 2>/dev/null
 
-# BUILD BGUTIL SERVER
-RUN python3 -c "\
-import os, subprocess, bgutil_ytdlp_pot_provider; \
-srv = os.path.join(os.path.dirname(bgutil_ytdlp_pot_provider.__file__), 'server'); \
-print('bgutil server dir:', srv); \
-subprocess.run(['npm', 'install'], cwd=srv, check=True); \
-subprocess.run(['npm', 'run', 'build'], cwd=srv, check=True); \
-print('bgutil build complete')" || echo "bgutil build skipped"
+RUN cd /root && git clone https://github.com/v8u1i/bgutil-ytdlp-pot-provider.git && \
+    cd bgutil-ytdlp-pot-provider/server && \
+    npm install && \
+    npm run build
 
 # VERIFY BGUTIL
 RUN yt-dlp --verbose --simulate \
