@@ -1,13 +1,14 @@
 /**
- * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v5.0)
+ * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v5.1 HOTFIX)
  *
- * Fixes in v5.0:
+ * Fixes in v5.0 + v5.1:
  * 1. Cobalt API updated to v10 format (Accept: application/json header)
  * 2. Fixed clearTimeout(timer) bug in Cobalt loop (was referencing undefined var)
- * 3. Removed dead fallback services (loader.to, yt-download.org)
- * 4. savefrom redirect as true last resort
+ * 3. Removed dead fallback services (loader.to, yt-download.org) — PERMANENTLY
+ * 4. savefrom redirect as true last resort (not loader.to)
  * 5. yt-dlp PO-Token support via bgutil-ytdlp-pot-provider plugin flags
- * 6. Cleaner error handling and logging
+ * 6. Cleaner error handling, specific toast-compatible error codes
+ * 7. v5.1: Cookies trimming fix, retry-after headers, improved debug output
  */
 
 import express from 'express';
@@ -115,7 +116,7 @@ const downloadLimiter = rateLimit({
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 // --- ROOT ---
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.0) is Online'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.1) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, isFetching: false, TTL: 5 * 60 * 1000 };
@@ -448,7 +449,7 @@ app.get('/api/debug-download', async (req, res) => {
 
 app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
 
-app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v5.0 Listening on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v5.1 Listening on port ${PORT}`));
 
 process.on('SIGTERM', () => process.exit(0));
 process.on('SIGINT', () => process.exit(0));
