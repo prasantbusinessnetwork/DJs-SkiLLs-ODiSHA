@@ -1,5 +1,5 @@
-﻿=== Ironclad v7.0 Debug ===
-Timestamp: 2026-03-15T09:49:40.955Z
+﻿=== Ironclad v7.1 Debug ===
+Timestamp: 2026-03-15T09:51:56.758Z
 
 --- Cookies ---
   Path: /tmp/yt_cookies.txt
@@ -17,5 +17,9 @@ Timestamp: 2026-03-15T09:49:40.955Z
 
 --- Tools ---
   yt-dlp: 2026.03.13.083652
-  bgutil-server: ❌ NOT FOUND
+  bgutil-server: ❌ ERROR (Command failed: python3 -c "import bgutil_ytdlp_pot_provider,os; print(os.path.join(os.path.dirname(bgutil_ytdlp_pot_provider.__file__),'server','build','generate_once.js'))"
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+ModuleNotFoundError: No module named 'bgutil_ytdlp_pot_provider'
+)
 

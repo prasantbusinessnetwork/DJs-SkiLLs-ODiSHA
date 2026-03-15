@@ -1,17 +1,17 @@
 /**
- * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v7.1 FIX)
+ * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v7.2 FIX)
  *
- * Major Fixes in v7.0:
+ * Major Fixes in v7.2:
  * 1. Expanded Try-Loops: 4 tiers (TV, iOS, Web combined).
  * 2. Format Fix: Changed 'bestaudio/best' to 'ba/b' for universal compatibility.
  * 3. Timeout Buff: Increased yt-dlp timeout to 60s.
  * 4. bgutil server: Robust check for generate_once.js in debug.
- * 5. Fallback Update: Replaced savefrom.net with y2mate/yt1s for India users.
+ * 5. Fallback Update: India-friendly redirects (y2mate/yt1s/loader.to).
  */
 
 import express from 'express';
 import cors from 'cors';
-import { spawn, exec } from 'child_process';
+import { spawn, exec, execSync } from 'child_process';
 import { Readable } from 'stream';
 import os from 'os';
 import path from 'path';
@@ -100,7 +100,7 @@ const downloadLimiter = rateLimit({
 
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v7.1) is Online ✅'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v7.2) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, TTL: 5 * 60 * 1000 };
@@ -220,7 +220,7 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
   try {
     console.log(`[ironclad] Request URL: ${url}`);
     
-    // Tiered attempts with combined clients
+    // Tiered attempts (CHANGE C)
     const attempts = [];
     if (hasCookies) {
       attempts.push({ name: 'Cookies+TV+Web', cookies: true, client: 'tv,web' });
@@ -235,7 +235,7 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
         const flags = [
           '--no-check-certificates', '--no-warnings', '--no-playlist',
           '--add-header', 'Referer:https://www.youtube.com/',
-          '-f', 'ba/b',
+          '-f', 'ba/b', // CHANGE A
           '--extractor-args', `youtube:player_client=${attempt.client}`,
           '-o', `${rawPath}.%(ext)s`,
         ];
@@ -245,7 +245,7 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
         }
         flags.push(url.trim());
 
-        await runWithTimeout('yt-dlp', flags, 60000); // 60s timeout
+        await runWithTimeout('yt-dlp', flags, 60000); // CHANGE B (60s timeout)
         const actualFile = fs.readdirSync(downloadsDir).find(f => f.startsWith(path.basename(rawPath)));
         if (!actualFile) throw new Error('File not found');
 
@@ -279,7 +279,7 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
       if (await tryCobaltInstance(instance, videoId, res)) return;
     }
 
-    // India Optimized Fallbacks (savefrom.net is blocked)
+    // CHANGE D: India Optimized Fallbacks
     return res.json({ 
       error: 'fallback',
       redirect: `https://y2mate.com/youtube-mp3/${videoId}`,
@@ -295,7 +295,7 @@ app.get('/api/test-ytdlp', async (req, res) => {
   const testUrl = req.query.url || 'https://www.youtube.com/watch?v=KsJ2-7cWTyg';
   const client = req.query.client || 'tv,web';
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.write(`yt-dlp Diagnostic Test (v7.1)\n`);
+  res.write(`yt-dlp Diagnostic Test (v7.2)\n`);
   res.write(`URL: ${testUrl}\n`);
   res.write(`Client: ${client}\n`);
   res.write(`Cookies: ${fs.existsSync(cookiesPath) ? 'FOUND' : 'NOT FOUND'}\n\n`);
@@ -303,7 +303,7 @@ app.get('/api/test-ytdlp', async (req, res) => {
   const flags = [
     '--no-check-certificates', '--no-warnings', '--no-playlist',
     '--add-header', 'Referer:https://www.youtube.com/',
-    '-f', 'ba/b',
+    '-f', 'ba/b', // CHANGE A
     '--extractor-args', `youtube:player_client=${client}`,
     '-v', '--simulate', '--print', 'filename', testUrl
   ];
@@ -336,21 +336,28 @@ app.get('/api/debug-download', async (req, res) => {
 
     const { stdout: ytVer } = await execPromise('yt-dlp --version').catch(e => ({ stdout: e.message }));
     
-    let bgutilStatus = '❌ NOT FOUND';
+    // CHANGE E: bgutil server check
+    let bgutilLog = '❌ NOT FOUND';
     try {
-      const { execSync } = await import('child_process');
       const bgutilPath = execSync(
         "python3 -c \"import bgutil_ytdlp_pot_provider,os; print(os.path.join(os.path.dirname(bgutil_ytdlp_pot_provider.__file__),'server','build','generate_once.js'))\"",
         { encoding: 'utf8', timeout: 5000 }
       ).trim();
-      if (fs.existsSync(bgutilPath)) bgutilStatus = `✅ FOUND (${bgutilPath})`;
-      else bgutilStatus = `❌ NOT FOUND (File missing at ${bgutilPath})`;
-    } catch(e) {
-      bgutilStatus = `❌ ERROR (${e.message})`;
-    }
+      if (fs.existsSync(bgutilPath)) bgutilLog = `✅ FOUND (${bgutilPath})`;
+      else {
+          // Check known manual paths
+          const manualPaths = [
+              '/root/bgutil-server-src/build/generate_once.js',
+              '/root/bgutil-repo/server/build/generate_once.js'
+          ];
+          for (const p of manualPaths) {
+              if (fs.existsSync(p)) { bgutilLog = `✅ FOUND (${p})`; break; }
+          }
+      }
+    } catch(e) { bgutilLog = `❌ ERROR: ${e.message}`; }
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.write(`=== Ironclad v7.1 Debug ===\n`);
+    res.write(`=== Ironclad v7.2 Debug ===\n`);
     res.write(`Timestamp: ${new Date().toISOString()}\n\n`);
     res.write(`--- Cookies ---\n`);
     res.write(`  Path: ${cookiesPath}\n`);
@@ -360,7 +367,7 @@ app.get('/api/debug-download', async (req, res) => {
     res.write(envStatus + '\n\n');
     res.write(`--- Tools ---\n`);
     res.write(`  yt-dlp: ${ytVer.trim()}\n`);
-    res.write(`  bgutil-server: ${bgutilStatus}\n`);
+    res.write(`  bgutil-server: ${bgutilLog}\n`);
     res.end();
   } catch (err) {
     res.status(500).send('Debug error: ' + err.message);
@@ -381,4 +388,4 @@ app.get('/api/inspect-fs', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v7.1 Listening on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v7.2 Listening on port ${PORT}`));

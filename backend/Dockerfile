@@ -6,31 +6,25 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     wget \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 RUN wget -q https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp \
     -O /usr/local/bin/yt-dlp && \
     chmod a+rx /usr/local/bin/yt-dlp
 
+# Install bgutil plugin
 RUN pip install -U bgutil-ytdlp-pot-provider --break-system-packages 2>/dev/null || \
     pip3 install -U bgutil-ytdlp-pot-provider --break-system-packages 2>/dev/null || \
     echo "bgutil install skipped"
 
 # Build bgutil Node.js server (required for PO Token generation)
-RUN python3 << 'EOF'
-import os, subprocess, sys
-try:
-    import bgutil_ytdlp_pot_provider
-    srv = os.path.join(os.path.dirname(bgutil_ytdlp_pot_provider.__file__), 'server')
-    print(f'[bgutil] Building server at: {srv}')
-    subprocess.run(['npm', 'install'], cwd=srv, check=True)
-    subprocess.run(['npm', 'run', 'build'], cwd=srv, check=True)
-    built = os.path.exists(os.path.join(srv, 'build', 'generate_once.js'))
-    print(f'[bgutil] Build status: {"SUCCESS" if built else "FAILED"}')
-except Exception as e:
-    print(f'[bgutil] Build error: {e}')
-    sys.exit(0)
-EOF
+# Since pip doesn't always include server src, we clone it to be safe
+RUN git clone https://github.com/v8u1i/bgutil-ytdlp-pot-provider.git /root/bgutil-repo && \
+    cp -r /root/bgutil-repo/server /root/bgutil-server-src && \
+    cd /root/bgutil-server-src && \
+    npm install && \
+    npm run build
 
 RUN python3 -c "import bgutil_ytdlp_pot_provider, os; print(os.path.dirname(bgutil_ytdlp_pot_provider.__file__))" > /tmp/bgutil_path.txt 2>/dev/null || true
 
