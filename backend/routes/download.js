@@ -1,59 +1,9 @@
 import express from "express";
+import { spawn } from "child_process";
 import { downloadLimiter } from "../middleware/rateLimiter.js";
 import { logger } from "../utils/logger.js";
 
 const router = express.Router();
-
-// Cobalt API v2 instances (updated 2024)
-const COBALT_INSTANCES = [
-  "https://cobalt.api.timelessnesses.me",
-  "https://cobalt.synzr.space",
-  "https://cbl.0x7f.cc",
-  "https://api.cobalt.tools",
-];
-
-async function getCobaltAudioUrl(youtubeUrl, instance) {
-  try {
-    const res = await fetch(`${instance}/`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        url: youtubeUrl,
-        downloadMode: "audio",
-        audioFormat: "mp3",
-        filenameStyle: "basic",
-      }),
-      signal: AbortSignal.timeout(12000),
-    });
-
-    if (!res.ok) {
-      // Try legacy /api/json endpoint as fallback for older instances
-      const res2 = await fetch(`${instance}/api/json`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ url: youtubeUrl, isAudioOnly: true, aFormat: "mp3", filenamePattern: "basic" }),
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!res2.ok) return null;
-      const data2 = await res2.json();
-      if ((data2.status === "redirect" || data2.status === "stream") && data2.url) return data2.url;
-      return null;
-    }
-
-    const data = await res.json();
-    // v2 API returns { status: "redirect" | "tunnel" | "error", url: "..." }
-    if ((data.status === "redirect" || data.status === "tunnel" || data.status === "stream") && data.url) {
-      return data.url;
-    }
-    return null;
-  } catch (e) {
-    logger.error(`Cobalt ${instance} error: ${e.message}`);
-    return null;
-  }
-}
 
 router.get("/", downloadLimiter, async (req, res) => {
   let videoId = req.query.id || req.query.url;
@@ -70,25 +20,54 @@ router.get("/", downloadLimiter, async (req, res) => {
 
   logger.info(`[Download] Request for: ${youtubeUrl}`);
 
-  // Try each Cobalt instance in order
-  let audioUrl = null;
-  for (const instance of COBALT_INSTANCES) {
-    audioUrl = await getCobaltAudioUrl(youtubeUrl, instance);
-    if (audioUrl) {
-      logger.info(`[Download] Got URL from: ${instance}`);
-      break;
+  const title = (req.query.title || "audio").replace(/[^\w\s-]/gi, "").trim() || "audio";
+
+  // Set response headers for MP3 download
+  res.setHeader("Content-Type", "audio/mpeg");
+  res.setHeader("Content-Disposition", `attachment; filename="${title}.mp3"`);
+  res.setHeader("Transfer-Encoding", "chunked");
+
+  // Stream audio directly using yt-dlp - the most reliable method
+  const ytdlp = spawn("yt-dlp", [
+    "--no-playlist",
+    "-f", "bestaudio[ext=m4a]/bestaudio/best",
+    "--extract-audio",
+    "--audio-format", "mp3",
+    "--audio-quality", "0",
+    "-o", "-",          // Output to stdout
+    "--no-warnings",
+    "--no-progress",
+    "--quiet",
+    youtubeUrl
+  ]);
+
+  // Pipe yt-dlp stdout → HTTP response
+  ytdlp.stdout.pipe(res);
+
+  ytdlp.stderr.on("data", (data) => {
+    logger.error(`[yt-dlp stderr] ${data.toString()}`);
+  });
+
+  ytdlp.on("error", (err) => {
+    logger.error(`[yt-dlp spawn error] ${err.message}`);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "spawn_failed", message: "yt-dlp not found or failed to start" });
+    } else {
+      res.end();
     }
-  }
+  });
 
-  if (!audioUrl) {
-    logger.error(`[Download] All Cobalt instances failed for: ${youtubeUrl}`);
-    // Fallback: redirect to YouTube video so user is not left with an error
-    const vid = youtubeUrl.includes("v=") ? youtubeUrl.split("v=")[1].split("&")[0] : videoId;
-    return res.redirect(`https://www.youtube.com/watch?v=${vid}`);
-  }
+  ytdlp.on("close", (code) => {
+    if (code !== 0) {
+      logger.error(`[yt-dlp] exited with code ${code}`);
+    }
+    if (!res.writableEnded) res.end();
+  });
 
-  // 302 redirect to the direct audio URL — browser handles the download
-  return res.redirect(302, audioUrl);
+  // If client disconnects, kill yt-dlp
+  req.on("close", () => {
+    ytdlp.kill("SIGTERM");
+  });
 });
 
 export default router;
