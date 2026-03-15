@@ -105,7 +105,7 @@ const downloadLimiter = rateLimit({
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 // --- ROOT ---
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.5) is Online ✅'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.6) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, TTL: 5 * 60 * 1000 };
@@ -295,7 +295,7 @@ app.get('/api/debug-download', async (req, res) => {
   const withSpace = process.env['YOUTUBE_COOKIES '];
   const val = exact || withSpace;
   res.setHeader('Content-Type', 'text/plain');
-  res.write(`Ironclad v5.5 Debug\n`);
+  res.write(`Ironclad v5.6 Debug\n`);
   res.write(`Cookies: ${val ? '✅ Set ' + (exact ? '(Exact)' : '(Space)') : '❌ Missing'}\n`);
   res.write(`Tools: ` + (await execPromise('yt-dlp --version').then(r => r.stdout).catch(e => e.message)));
   res.end();
