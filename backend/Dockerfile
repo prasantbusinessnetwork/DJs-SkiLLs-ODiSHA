@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     wget \
     curl \
-    git \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 RUN wget -q https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp \
@@ -15,16 +15,19 @@ RUN wget -q https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/down
 
 WORKDIR /app
 
-# INSTALL BGUTIL FROM GIT
-RUN pip install -U git+https://github.com/v8u1i/bgutil-ytdlp-pot-provider.git --break-system-packages
+# INSTALL BGUTIL FROM PIP
+RUN pip install -U bgutil-ytdlp-pot-provider --break-system-packages
 
-# CLONE AND PREPARE SERVER IN ./bgutil-server
-RUN git clone https://github.com/v8u1i/bgutil-ytdlp-pot-provider.git ./bgutil-server && \
+# DOWNLOAD AND BUILD SERVER SOURCE VIA WGET (Avoids Git issues)
+RUN wget -q https://github.com/v8u1i/bgutil-ytdlp-pot-provider/archive/refs/heads/main.zip -O bgutil.zip && \
+    unzip bgutil.zip && \
+    mv bgutil-ytdlp-pot-provider-main bgutil-server && \
+    rm bgutil.zip && \
     cd bgutil-server/server && \
     npm install && \
     npm run build
 
-# VERIFY (pointing to local clone)
+# VERIFY
 RUN yt-dlp --verbose --simulate \
     --extractor-args "youtube:server_home=/app/bgutil-server/server" \
     "https://www.youtube.com/watch?v=KsJ2-7cWTyg" 2>&1 | head -20 || true

@@ -1,5 +1,5 @@
 /**
- * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v6.2 FIX)
+ * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v6.3 FIX)
  *
  * Major Fixes in v6.0:
  * 1. Expanded Try-Loops: 4 tiers (TV, iOS, Web fallbacks).
@@ -100,7 +100,7 @@ const downloadLimiter = rateLimit({
 
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v6.2) is Online ✅'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v6.3) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, TTL: 5 * 60 * 1000 };
@@ -297,7 +297,7 @@ app.get('/api/test-ytdlp', async (req, res) => {
   const testUrl = req.query.url || 'https://www.youtube.com/watch?v=KsJ2-7cWTyg';
   const client = req.query.client || 'tv,web';
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.write(`yt-dlp Diagnostic Test (v6.2)\n`);
+  res.write(`yt-dlp Diagnostic Test (v6.3)\n`);
   res.write(`URL: ${testUrl}\n`);
   res.write(`Client: ${client}\n`);
   res.write(`Cookies: ${fs.existsSync(cookiesPath) ? 'FOUND' : 'NOT FOUND'}\n\n`);
@@ -342,7 +342,7 @@ app.get('/api/debug-download', async (req, res) => {
     const { stdout: ytVer } = await execPromise('yt-dlp --version').catch(e => ({ stdout: e.message }));
     
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.write(`=== Ironclad v6.2 Debug ===\n`);
+    res.write(`=== Ironclad v6.3 Debug ===\n`);
     res.write(`Timestamp: ${new Date().toISOString()}\n\n`);
     res.write(`--- Cookies ---\n`);
     res.write(`  Path: ${cookiesPath}\n`);
@@ -373,4 +373,4 @@ app.get('/api/inspect-fs', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v6.2 Listening on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v6.3 Listening on port ${PORT}`));
