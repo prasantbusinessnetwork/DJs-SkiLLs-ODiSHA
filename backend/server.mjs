@@ -351,4 +351,17 @@ app.get('/api/debug-download', async (req, res) => {
   }
 });
 
+app.get('/api/inspect-fs', async (req, res) => {
+  const p = req.query.path || '/usr/local/lib/python3.11/dist-packages/bgutil_ytdlp_pot_provider';
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  try {
+    const { stdout } = await execPromise(`ls -R ${p}`).catch(e => ({ stdout: e.message }));
+    res.write(`Inspection of: ${p}\n\n`);
+    res.write(stdout);
+    res.end();
+  } catch (err) {
+    res.status(500).send('Inspect error: ' + err.message);
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v6.0 Listening on port ${PORT}`));
