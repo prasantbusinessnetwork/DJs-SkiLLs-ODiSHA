@@ -105,7 +105,7 @@ const downloadLimiter = rateLimit({
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 // --- ROOT ---
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.7) is Online ✅'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.8) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, TTL: 5 * 60 * 1000 };
@@ -288,23 +288,64 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
 
 app.get('/api/test-ytdlp', async (req, res) => {
   const testUrl = req.query.url || 'https://www.youtube.com/watch?v=KsJ2-7cWTyg';
+  const client = req.query.client || 'tv';
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  const flags = ['--cookies', cookiesPath, '-f', 'bestaudio/best', '-v', '--simulate', '--print', 'filename', testUrl];
+  res.write(`yt-dlp Diagnostic Test (v5.8)\n`);
+  res.write(`URL: ${testUrl}\n`);
+  res.write(`Client: ${client}\n`);
+  res.write(`Cookies: ${fs.existsSync(cookiesPath) ? 'FOUND' : 'NOT FOUND'}\n\n`);
+
+  const flags = [
+    '--no-check-certificates', '--no-warnings', '--no-playlist',
+    '--add-header', 'Referer:https://www.youtube.com/',
+    '-f', 'bestaudio/best',
+    '--extractor-args', `youtube:player_client=${client}`,
+    '-v', '--simulate', '--print', 'filename', testUrl
+  ];
+  if (fs.existsSync(cookiesPath)) flags.unshift('--cookies', cookiesPath);
+
   const proc = spawn('yt-dlp', flags);
   proc.stdout.on('data', (d) => res.write(`[OUT] ${d}`));
   proc.stderr.on('data', (d) => res.write(`[ERR] ${d}`));
-  proc.on('close', (code) => { res.write(`\nCode ${code}`); res.end(); });
+  proc.on('close', (code) => { res.write(`\nExited with Code ${code}`); res.end(); });
 });
 
 app.get('/api/debug-download', async (req, res) => {
-  const exact = process.env.YOUTUBE_COOKIES;
-  const withSpace = process.env['YOUTUBE_COOKIES '];
-  const val = exact || withSpace;
-  res.setHeader('Content-Type', 'text/plain');
-  res.write(`Ironclad v5.6 Debug\n`);
-  res.write(`Cookies: ${val ? '✅ Set ' + (exact ? '(Exact)' : '(Space)') : '❌ Missing'}\n`);
-  res.write(`Tools: ` + (await execPromise('yt-dlp --version').then(r => r.stdout).catch(e => e.message)));
-  res.end();
+  try {
+    const cookieFileExists = fs.existsSync(cookiesPath);
+    const cookieFileSize = cookieFileExists ? fs.statSync(cookiesPath).size : 0;
+    
+    const envKeys = [
+      'PORT', 'YOUTUBE_API_KEY', 'YOUTUBE_CHANNEL_ID',
+      'YOUTUBE_COOKIES', 'YOUTUBE_PO_TOKEN', 'YOUTUBE_VISITOR_DATA', 'COBALT_INSTANCE_URL'
+    ];
+
+    const envStatus = envKeys.map(k => {
+      const exact = process.env[k];
+      const withSpace = process.env[k + ' '];
+      const val = exact || withSpace;
+      const status = val?.trim() ? `✅ Set (${String(val).trim().length} chars)` : '❌ Missing';
+      const warning = (!exact && withSpace) ? ' (⚠️ SPACE DETECTED IN KEY NAME)' : '';
+      return `  ${k}: ${status}${warning}`;
+    }).join('\n');
+
+    const { stdout: ytVer } = await execPromise('yt-dlp --version').catch(e => ({ stdout: e.message }));
+    
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.write(`=== Ironclad v5.8 Debug ===\n`);
+    res.write(`Timestamp: ${new Date().toISOString()}\n\n`);
+    res.write(`--- Cookies ---\n`);
+    res.write(`  Path: ${cookiesPath}\n`);
+    res.write(`  Status: ${cookieFileExists ? '✅ FOUND' : '❌ NOT FOUND'}\n`);
+    res.write(`  File Size: ${cookieFileSize} bytes\n\n`);
+    res.write(`--- Environment ---\n`);
+    res.write(envStatus + '\n\n');
+    res.write(`--- Tools ---\n`);
+    res.write(`  yt-dlp: ${ytVer.trim()}\n`);
+    res.end();
+  } catch (err) {
+    res.status(500).send('Debug error: ' + err.message);
+  }
 });
 
 app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v5.5 Listening on port ${PORT}`));
