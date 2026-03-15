@@ -3,6 +3,7 @@ import { Play, Download, Loader2, CheckCircle, AlertCircle } from "lucide-react"
 import LazyImage from "./LazyImage";
 import { toast } from "sonner";
 import { API_BASE } from "@/lib/config";
+import { downloadSong } from "@/utils/download";
 
 interface MixCardProps {
   title: string;
@@ -21,83 +22,11 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
   const [dlState, setDlState] = useState<DownloadState>("idle");
 
   // ── Download handler ─────────────────────────────────────────────────────
-  const handleDownload = async (e: React.MouseEvent) => {
+  const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!videoId || dlState === "downloading") return;
-
-    setDlState("downloading");
-
+    if (!videoId) return;
     const youtubeFullUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const downloadEndpoint = `${API_BASE}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(title || "audio")}`;
-
-    try {
-      console.log(`[MixCard] Download → ${downloadEndpoint}`);
-      const toastId = toast.loading("Preparing your MP3...");
-
-      const response = await fetch(downloadEndpoint);
-
-      toast.dismiss(toastId);
-
-      if (!response.ok) {
-        let errorMessage = `Server error: ${response.status}`;
-        try {
-          const errJson = await response.json();
-          errorMessage = errJson.message || errorMessage;
-        } catch (_) {}
-        throw new Error(errorMessage);
-      }
-
-      const contentType = response.headers.get("Content-Type") || "";
-
-      if (contentType.includes("json")) {
-        const data = await response.json();
-        if (data.redirect) {
-          window.open(data.redirect, "_blank", "noopener,noreferrer");
-          setDlState("success");
-          toast.info("Opening download page...");
-        } else {
-          throw new Error(data.message || "Request failed");
-        }
-      } else if (contentType.includes("audio") || contentType.includes("octet-stream")) {
-        // Direct MP3 blob download
-        const blob = await response.blob();
-        const blobUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = blobUrl;
-        link.setAttribute("download", `${(title || "audio").replace(/[^\w\s-]/gi, "").trim()}.mp3`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(blobUrl);
-
-        setDlState("success");
-        toast.success("✅ MP3 Downloaded!");
-      } else {
-        // Legacy Redirect fallback
-        window.open(response.url, "_blank", "noopener,noreferrer");
-        setDlState("success");
-        toast.info("Redirecting to download...");
-      }
-
-      setTimeout(() => setDlState("idle"), 5000);
-
-    } catch (error: any) {
-      console.error("[MixCard] Download error:", error);
-      toast.dismiss();
-
-      if (error?.message?.includes("server_busy") || error?.message?.includes("429")) {
-        toast.warning("⏳ Server is busy. Try in 30 seconds.");
-      } else if (error?.message?.includes("daily_limit")) {
-        toast.error("❌ Daily limit reached. Try tomorrow.");
-      } else {
-        toast.error("❌ Download failed. Trying fallback...");
-        // Open backend URL — last resort (user sees savefrom or error page)
-        setTimeout(() => window.open(downloadEndpoint, "_blank", "noopener,noreferrer"), 500);
-      }
-
-      setDlState("error");
-      setTimeout(() => setDlState("idle"), 6000);
-    }
+    downloadSong(youtubeFullUrl, title);
   };
 
   const dlLabel =

@@ -1,5 +1,5 @@
 /**
- * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v7.5 FINAL FIX)
+ * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v7.6 STABLE)
  *
  * Major Fixes in v7.2:
  * 1. Expanded Try-Loops: 4 tiers (TV, iOS, Web combined).
@@ -11,6 +11,7 @@
 
 import express from 'express';
 import cors from 'cors';
+import axios from 'axios';
 import { spawn, exec, execSync } from 'child_process';
 import { Readable } from 'stream';
 import os from 'os';
@@ -22,7 +23,7 @@ import { rateLimit } from 'express-rate-limit';
 const execPromise = promisify(exec);
 const isWindows = process.platform === 'win32';
 const downloadsDir = isWindows ? path.join(process.cwd(), 'downloads') : '/tmp/djs_downloads';
-const BGUTIL_SERVER_PATH = isWindows ? '' : '/app/bgutil-source/server';
+const BGUTIL_SERVER_PATH = isWindows ? '' : '/tmp/bgutil-server';
 
 // --- Concurrency Control ---
 let activeDownloads = 0;
@@ -32,8 +33,55 @@ if (!fs.existsSync(downloadsDir)) {
   fs.mkdirSync(downloadsDir, { recursive: true });
 }
 
+async function ensureBgutil() {
+  if (isWindows) return;
+  const buildFile = path.join(BGUTIL_SERVER_PATH, 'build', 'generate_once.js');
+  
+  // Already built — skip
+  if (fs.existsSync(buildFile)) {
+    console.log('[bgutil] Already built ✅');
+    return;
+  }
+
+  console.log('[bgutil] Building PO Token server...');
+  try {
+    const cloneDir = '/tmp/bgutil-clone';
+    
+    // Remove old failed clone if exists
+    if (fs.existsSync(cloneDir)) {
+      await execPromise(`rm -rf ${cloneDir}`);
+    }
+
+    // Clone CORRECT repo (LuanRT — official)
+    await execPromise(
+      `git clone --depth=1 https://github.com/LuanRT/bgutil-ytdlp-pot-provider.git ${cloneDir}`,
+      { timeout: 60000 }
+    );
+
+    const serverDir = path.join(cloneDir, 'server');
+
+    // Install dependencies
+    await execPromise('npm install', { cwd: serverDir, timeout: 120000 });
+
+    // Build
+    await execPromise('npm run build', { cwd: serverDir, timeout: 60000 });
+
+    // Move built server to permanent location
+    await execPromise(`mkdir -p /tmp && cp -r ${serverDir} ${BGUTIL_SERVER_PATH}`);
+
+    if (fs.existsSync(buildFile)) {
+      console.log('[bgutil] ✅ Build SUCCESS — PO Token server ready!');
+    } else {
+      console.warn('[bgutil] ⚠️ Build completed but generate_once.js not found');
+    }
+  } catch (e) {
+    console.error('[bgutil] ❌ Build FAILED:', e.message);
+  }
+}
+
 async function startupMaintenance() {
   console.log('[server] Running startup maintenance...');
+  await ensureBgutil();
   try {
     exec('yt-dlp --rm-cache-dir', (err) => {
       if (!err) console.log('[server] yt-dlp cache cleared.');
@@ -101,7 +149,7 @@ const downloadLimiter = rateLimit({
 
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v7.5) is Online ✅'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v7.6) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, TTL: 5 * 60 * 1000 };
@@ -203,10 +251,36 @@ async function tryCobaltInstance(instance, videoId, res) {
 }
 
 app.get('/api/download', downloadLimiter, async (req, res) => {
-  const url = req.query.url;
+  let url = req.query.url;
   const requestedTitle = req.query.title ? String(req.query.title) : 'audio';
   const safeTitle = requestedTitle.replace(/[^\w\s-]/gi, '').trim() || 'audio';
   if (!url) return res.status(400).json({ error: 'missing_url' });
+
+  // Handle direct MP3 links or GitHub links
+  if (url.toLowerCase().endsWith('.mp3') || url.includes('raw.githubusercontent.com') || url.includes('github.com')) {
+    try {
+      // Automatic GitHub URL conversion
+      if (url.includes('github.com') && !url.includes('raw.githubusercontent.com')) {
+        url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+      }
+
+      console.log(`[streaming] Fetching: ${url}`);
+      const response = await axios({
+        method: 'get',
+        url: url,
+        responseType: 'stream'
+      });
+      
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.mp3"`);
+      
+      response.data.pipe(res);
+      return;
+    } catch (e) {
+      console.error(`[streaming] Failed: ${e.message}`);
+      // Fallback to YouTube logic if direct fetch fails
+    }
+  }
 
   if (activeDownloads >= MAX_CONCURRENT_DOWNLOADS) return res.status(429).json({ error: 'server_busy', message: 'Busy. Try in 30s.' });
 
@@ -221,11 +295,13 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
   try {
     console.log(`[ironclad] Request URL: ${url}`);
     
-    // Tiered attempts (CHANGE C)
+    // Tiered attempts (Optimized for speed)
     const attempts = [];
     if (hasCookies) {
       attempts.push({ name: 'Cookies+TV+Web', cookies: true, client: 'tv,web' });
       attempts.push({ name: 'Cookies+iOS+Web', cookies: true, client: 'ios,web' });
+    } else {
+      console.log(`[ironclad] skipping cookie attempts (cookies.txt missing or small)`);
     }
     attempts.push({ name: 'NoCookies+TV+Web', cookies: false, client: 'tv,web' });
     attempts.push({ name: 'NoCookies+TVembedded+Web', cookies: false, client: 'tv_embedded,web' });
@@ -236,7 +312,7 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
         const flags = [
           '--no-check-certificates', '--no-warnings', '--no-playlist',
           '--add-header', 'Referer:https://www.youtube.com/',
-          '-f', 'ba/b', // CHANGE A
+          '-f', 'ba/b',
           '--extractor-args', `youtube:player_client=${attempt.client}`,
           '-o', `${rawPath}.%(ext)s`,
         ];
@@ -249,7 +325,7 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
         }
         flags.push(url.trim());
 
-        await runWithTimeout('yt-dlp', flags, 60000); // CHANGE B (60s timeout)
+        await runWithTimeout('yt-dlp', flags, 60000);
         const actualFile = fs.readdirSync(downloadsDir).find(f => f.startsWith(path.basename(rawPath)));
         if (!actualFile) throw new Error('File not found');
 
@@ -283,7 +359,6 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
       if (await tryCobaltInstance(instance, videoId, res)) return;
     }
 
-    // CHANGE D: India Optimized Fallbacks
     return res.json({ 
       error: 'fallback',
       redirect: `https://y2mate.com/youtube-mp3/${videoId}`,
@@ -299,7 +374,7 @@ app.get('/api/test-ytdlp', async (req, res) => {
   const testUrl = req.query.url || 'https://www.youtube.com/watch?v=KsJ2-7cWTyg';
   const client = req.query.client || 'tv,web';
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.write(`yt-dlp Diagnostic Test (v7.5)\n`);
+  res.write(`yt-dlp Diagnostic Test (v7.6)\n`);
   res.write(`URL: ${testUrl}\n`);
   res.write(`Client: ${client}\n`);
   res.write(`Cookies: ${fs.existsSync(cookiesPath) ? 'FOUND' : 'NOT FOUND'}\n\n`);
@@ -359,7 +434,7 @@ app.get('/api/debug-download', async (req, res) => {
     }
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.write(`=== Ironclad v7.5 Debug ===\n`);
+    res.write(`=== Ironclad v7.6 Debug ===\n`);
     res.write(`Timestamp: ${new Date().toISOString()}\n\n`);
     res.write(`--- Cookies ---\n`);
     res.write(`  Path: ${cookiesPath}\n`);
@@ -390,4 +465,11 @@ app.get('/api/inspect-fs', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v7.5 Listening on port ${PORT}`));
+app.use((err, req, res, next) => {
+  console.error('[global-error]', err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'internal_server_error', message: err.message });
+  }
+});
+
+app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v7.6 Listening on port ${PORT}`));

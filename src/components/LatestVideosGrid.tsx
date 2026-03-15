@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Loader2, Play } from "lucide-react";
+import { Loader2, Play, Download } from "lucide-react";
 import { useYouTubeVideos } from "@/hooks/useYouTubeVideos";
 import LazyImage from "@/components/LazyImage";
+import { downloadSong } from "@/utils/download";
 
 const LatestVideosGrid = () => {
   const { data: videos, isLoading, isError } = useYouTubeVideos(5);
@@ -65,16 +66,27 @@ const LatestVideosGrid = () => {
           </div>
 
           <div className="flex flex-col gap-2 px-3 py-3 sm:px-4 sm:py-4">
-            <h3 className="line-clamp-2 text-sm font-semibold text-foreground">
-              {video.title}
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              {new Date(video.publishedAt).toLocaleDateString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-              })}
-            </p>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <h3 className="line-clamp-2 text-sm font-semibold text-foreground">
+                  {video.title}
+                </h3>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {new Date(video.publishedAt).toLocaleDateString("en-IN", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </p>
+              </div>
+              <button
+                onClick={() => downloadSong(video.youtubeUrl, video.title)}
+                title="Download MP3"
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-all hover:bg-primary/20 hover:text-primary"
+              >
+                <Download className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </article>
       ))}

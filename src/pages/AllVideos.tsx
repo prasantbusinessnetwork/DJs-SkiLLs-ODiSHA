@@ -8,6 +8,7 @@ import { API_BASE } from "@/lib/config";
 
 import { YouTubeVideo } from "@/lib/youtube";
 import { toast } from "sonner";
+import { downloadSong } from "@/utils/download";
 
 type DownloadState = "idle" | "preparing" | "ready" | "failed";
 
@@ -24,78 +25,10 @@ const VideoItem = ({ video }: VideoItemProps) => {
     return (name || "download").replace(/[^\w\s-]/gi, '').trim() || "download";
   };
 
-  const handleDownload = async () => {
-    if (!video.videoId || dlState === "preparing") return;
-
-    setDlState("preparing");
+  const handleDownload = () => {
+    if (!video.videoId) return;
     const youtubeFullUrl = `https://www.youtube.com/watch?v=${video.videoId}`;
-    const downloadEndpoint = `${API_BASE}/api/download?url=${encodeURIComponent(youtubeFullUrl)}&title=${encodeURIComponent(video.title)}`;
-
-    try {
-      console.log(`[AllVideos] Download → ${downloadEndpoint}`);
-      const toastId = toast.loading("Preparing your MP3...");
-
-      const response = await fetch(downloadEndpoint);
-      toast.dismiss(toastId);
-
-      if (!response.ok) {
-        let errorMessage = `Server error: ${response.status}`;
-        try {
-          const errJson = await response.json();
-          errorMessage = errJson.message || errorMessage;
-        } catch (_) {}
-        throw new Error(errorMessage);
-      }
-
-      const contentType = response.headers.get("Content-Type") || "";
-
-      if (contentType.includes("json")) {
-        const data = await response.json();
-        if (data.redirect) {
-          window.open(data.redirect, "_blank", "noopener,noreferrer");
-          setDlState("ready");
-          toast.info("Opening download page...");
-        } else {
-          throw new Error(data.message || "Request failed");
-        }
-      } else if (contentType.includes("audio") || contentType.includes("octet-stream")) {
-        const blob = await response.blob();
-        const blobUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = blobUrl;
-        link.setAttribute("download", `${sanitize(video.title || "audio")}.mp3`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(blobUrl);
-
-        setDlState("ready");
-        toast.success("✅ MP3 Downloaded!");
-      } else {
-        // Legacy Redirect fallback
-        window.open(response.url, "_blank", "noopener,noreferrer");
-        setDlState("ready");
-        toast.info("Redirecting to download...");
-      }
-
-      setTimeout(() => setDlState("idle"), 5000);
-
-    } catch (err: any) {
-      console.error("[AllVideos] Download error:", err);
-      toast.dismiss();
-
-      if (err?.message?.includes("server_busy") || err?.message?.includes("429")) {
-        toast.warning("⏳ Server is busy. Try in 30 seconds.");
-      } else if (err?.message?.includes("daily_limit")) {
-        toast.error("❌ Daily limit reached. Try tomorrow.");
-      } else {
-        toast.error("❌ Download failed. Trying fallback...");
-        setTimeout(() => window.open(downloadEndpoint, "_blank", "noopener,noreferrer"), 500);
-      }
-
-      setDlState("failed");
-      setTimeout(() => setDlState("idle"), 6000);
-    }
+    downloadSong(youtubeFullUrl, video.title);
   };
 
   return (
