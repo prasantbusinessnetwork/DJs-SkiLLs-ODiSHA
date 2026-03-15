@@ -116,7 +116,7 @@ const downloadLimiter = rateLimit({
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 // --- ROOT ---
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.3) is Online ✅'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.4) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, isFetching: false, TTL: 5 * 60 * 1000 };
@@ -318,20 +318,18 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
     console.log(`[ironclad] Request URL: ${url} (Queue: ${activeDownloads})`);
 
     // ── Build yt-dlp attempt list ──────────────────────────────────
-    // Each attempt: { name, cookies, client, potoken }
     const attempts = [];
 
-    if (hasCookies && hasPOToken) {
-      attempts.push({ name: 'Cookies+POToken+TV', cookies: true, client: 'tv', potoken: true });
-      attempts.push({ name: 'Cookies+POToken+Web', cookies: true, client: 'web', potoken: true });
-    }
     if (hasCookies) {
-      attempts.push({ name: 'Cookies+TV', cookies: true, client: 'tv,web', potoken: false });
-      attempts.push({ name: 'Cookies+iOS', cookies: true, client: 'ios,web', potoken: false });
+      // Prioritize web client when cookies are available (best match)
+      attempts.push({ name: 'Cookies+Web', cookies: true, client: 'web', potoken: hasPOToken });
+      attempts.push({ name: 'Cookies+iOS', cookies: true, client: 'ios', potoken: false });
+      attempts.push({ name: 'Cookies+TV', cookies: true, client: 'tv', potoken: hasPOToken });
     }
+    
     // Always try no-cookies as fallback
-    attempts.push({ name: 'NoCookies+TV', cookies: false, client: 'tv,web', potoken: false });
-    attempts.push({ name: 'NoCookies+mweb', cookies: false, client: 'mweb,web', potoken: false });
+    attempts.push({ name: 'NoCookies+TV', cookies: false, client: 'tv', potoken: false });
+    attempts.push({ name: 'NoCookies+Web', cookies: false, client: 'web', potoken: false });
 
     let success = false;
 
@@ -342,7 +340,7 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
           '--no-check-certificates', '--no-warnings', '--no-playlist',
           '--add-header', 'Referer:https://www.youtube.com/',
           '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-          '-f', 'ba/b',
+          '-f', 'bestaudio/best', // Relaxed: bestaudio or anything available
           '--extractor-args', `youtube:player_client=${attempt.client}`,
           '-o', `${rawPath}.%(ext)s`,
         ];
