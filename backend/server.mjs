@@ -352,12 +352,13 @@ app.get('/api/debug-download', async (req, res) => {
 });
 
 app.get('/api/inspect-fs', async (req, res) => {
-  const query = req.query.q || 'bgutil_ytdlp_pot_provider';
+  const cmd = req.query.cmd || 'ls -la /app';
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   try {
-    const { stdout } = await execPromise(`find / -name "${query}" -type d 2>/dev/null | head -n 10`).catch(e => ({ stdout: e.message }));
-    res.write(`Searching for: ${query}\n\n`);
+    const { stdout, stderr } = await execPromise(cmd).catch(e => ({ stdout: e.message, stderr: '' }));
+    res.write(`Command: ${cmd}\n\n`);
     res.write(stdout);
+    if (stderr) res.write(`\nERR: ${stderr}`);
     res.end();
   } catch (err) {
     res.status(500).send('Inspect error: ' + err.message);
