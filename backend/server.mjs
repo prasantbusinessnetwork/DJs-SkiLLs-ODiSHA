@@ -1,5 +1,5 @@
 /**
- * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v5.5 FIX)
+ * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v5.9 FIX)
  *
  * Major Fixes in v5.5:
  * 1. Cobalt v10 REDIRECT: Bypass Railway IP blocks by letting browser download directly.
@@ -105,7 +105,7 @@ const downloadLimiter = rateLimit({
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 // --- ROOT ---
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.8) is Online ✅'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.9) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, TTL: 5 * 60 * 1000 };
@@ -183,12 +183,17 @@ const runWithTimeout = (cmd, args, timeoutMs) => {
 async function tryCobaltInstance(instance, videoId, res) {
   const cobaltUrl = `${instance.replace(/\/$/, '')}/`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12000);
+  const timer = setTimeout(() => controller.abort(), 10000);
   try {
     const cobRes = await fetch(cobaltUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, downloadMode: 'audio', audioFormat: 'mp3' }),
+      body: JSON.stringify({ 
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        isAudioOnly: true,
+        aFormat: "mp3",
+        filenameStyle: "pretty"
+      }),
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -238,6 +243,7 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
           '--add-header', 'Referer:https://www.youtube.com/',
           '-f', 'bestaudio/best',
           '--extractor-args', `youtube:player_client=${attempt.client}`,
+          '--extractor-args', 'youtube:player_client=tv,web',
           '-o', `${rawPath}.%(ext)s`,
         ];
         if (attempt.cookies) flags.unshift('--cookies', cookiesPath);
@@ -246,7 +252,7 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
         }
         flags.push(url.trim());
 
-        await runWithTimeout('yt-dlp', flags, 35000);
+        await runWithTimeout('yt-dlp', flags, 60000);
         const actualFile = fs.readdirSync(downloadsDir).find(f => f.startsWith(path.basename(rawPath)));
         if (!actualFile) throw new Error('File not found');
 
@@ -269,7 +275,13 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
 
     // Fallback Cobalt
     const videoId = url.match(/(?:v=|\/embed\/|shorts\/|youtu\.be\/)([^&?/]+)/)?.[1] || url;
-    const cobaltInstances = [process.env.COBALT_INSTANCE_URL, 'https://cobalt.tools', 'https://cobalt.ari.lt', 'https://cobalt.synzr.space'].filter(Boolean);
+    const cobaltInstances = [
+      process.env.COBALT_INSTANCE_URL,
+      'https://co.wuk.sh',
+      'https://cobalt.katze.moe',
+      'https://cobalt.ari.lt',
+      'https://cob.in.projectsegfau.lt'
+    ].filter(Boolean);
     for (const instance of cobaltInstances) {
       if (await tryCobaltInstance(instance, videoId, res)) return;
     }
@@ -290,7 +302,7 @@ app.get('/api/test-ytdlp', async (req, res) => {
   const testUrl = req.query.url || 'https://www.youtube.com/watch?v=KsJ2-7cWTyg';
   const client = req.query.client || 'tv';
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.write(`yt-dlp Diagnostic Test (v5.8)\n`);
+  res.write(`yt-dlp Diagnostic Test (v5.9)\n`);
   res.write(`URL: ${testUrl}\n`);
   res.write(`Client: ${client}\n`);
   res.write(`Cookies: ${fs.existsSync(cookiesPath) ? 'FOUND' : 'NOT FOUND'}\n\n`);
@@ -332,7 +344,7 @@ app.get('/api/debug-download', async (req, res) => {
     const { stdout: ytVer } = await execPromise('yt-dlp --version').catch(e => ({ stdout: e.message }));
     
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.write(`=== Ironclad v5.8 Debug ===\n`);
+    res.write(`=== Ironclad v5.9 Debug ===\n`);
     res.write(`Timestamp: ${new Date().toISOString()}\n\n`);
     res.write(`--- Cookies ---\n`);
     res.write(`  Path: ${cookiesPath}\n`);
@@ -348,4 +360,4 @@ app.get('/api/debug-download', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v5.5 Listening on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v5.9 Listening on port ${PORT}`));
