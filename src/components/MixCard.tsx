@@ -49,7 +49,16 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
 
       const contentType = response.headers.get("Content-Type") || "";
 
-      if (contentType.includes("audio") || contentType.includes("octet-stream")) {
+      if (contentType.includes("json")) {
+        const data = await response.json();
+        if (data.redirect) {
+          window.open(data.redirect, "_blank", "noopener,noreferrer");
+          setDlState("success");
+          toast.info("Opening download page...");
+        } else {
+          throw new Error(data.message || "Request failed");
+        }
+      } else if (contentType.includes("audio") || contentType.includes("octet-stream")) {
         // Direct MP3 blob download
         const blob = await response.blob();
         const blobUrl = window.URL.createObjectURL(blob);
@@ -64,10 +73,10 @@ const MixCard = ({ title, artist, tag, thumbnail, youtubeUrl, isNew, videoId }: 
         setDlState("success");
         toast.success("✅ MP3 Downloaded!");
       } else {
-        // Redirect fallback (e.g. savefrom.net)
+        // Legacy Redirect fallback
         window.open(response.url, "_blank", "noopener,noreferrer");
         setDlState("success");
-        toast.info("Opening download page...");
+        toast.info("Redirecting to download...");
       }
 
       setTimeout(() => setDlState("idle"), 5000);

@@ -105,7 +105,7 @@ const downloadLimiter = rateLimit({
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 // --- ROOT ---
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.6) is Online ✅'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.7) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, TTL: 5 * 60 * 1000 };
@@ -196,8 +196,8 @@ async function tryCobaltInstance(instance, videoId, res) {
     const data = await cobRes.json();
     const dlLink = data.url || data?.data?.url;
     if (!dlLink) return false;
-    console.log(`[cobalt] Redirecting to: ${dlLink.slice(0, 50)}...`);
-    res.redirect(dlLink);
+    console.log(`[cobalt] Sending direct link for frontend to open: ${dlLink.slice(0, 50)}...`);
+    res.json({ redirect: dlLink, message: 'Redirecting to direct download link' });
     return true;
   } catch (e) { clearTimeout(timer); return false; }
 }
@@ -274,8 +274,14 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
       if (await tryCobaltInstance(instance, videoId, res)) return;
     }
 
-    return res.redirect(`https://savefrom.net/?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + videoId)}`);
+    // JSON response for frontend to handle the final resort open
+    return res.json({ 
+      error: 'fallback',
+      redirect: `https://savefrom.net/?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + videoId)}`,
+      message: 'Direct download unavailable. Redirecting to backup service.'
+    });
   } catch (err) {
+    console.error(`[ironclad] Error: ${err.message}`);
     if (!res.headersSent) res.status(500).json({ error: 'failed' });
   } finally { activeDownloads--; }
 });
