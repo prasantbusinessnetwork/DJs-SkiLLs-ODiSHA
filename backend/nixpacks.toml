@@ -7,8 +7,9 @@ cmds = [
   "wget -q https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp",
   "chmod a+rx /usr/local/bin/yt-dlp",
   "pip install -U bgutil-ytdlp-pot-provider --break-system-packages",
-  "git clone https://github.com/v8u1i/bgutil-ytdlp-pot-provider.git /root/bgutil-repo || true",
-  "python3 -c \"import os,subprocess; srv='/root/bgutil-repo/server'; subprocess.run(['npm','install'],cwd=srv,check=True); subprocess.run(['npm','run','build'],cwd=srv,check=True); print('bgutil built at',srv)\" || echo 'bgutil build skipped'",
+  "rm -rf bgutil-server-src || true",
+  "git clone https://github.com/v8u1i/bgutil-ytdlp-pot-provider.git bgutil-server-src",
+  "cd bgutil-server-src/server && npm install && npm run build",
   "yt-dlp --version"
 ]
 [start]
