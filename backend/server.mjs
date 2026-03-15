@@ -1,5 +1,5 @@
 /**
- * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v7.4 FIX)
+ * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v7.5 FINAL FIX)
  *
  * Major Fixes in v7.2:
  * 1. Expanded Try-Loops: 4 tiers (TV, iOS, Web combined).
@@ -22,6 +22,7 @@ import { rateLimit } from 'express-rate-limit';
 const execPromise = promisify(exec);
 const isWindows = process.platform === 'win32';
 const downloadsDir = isWindows ? path.join(process.cwd(), 'downloads') : '/tmp/djs_downloads';
+const BGUTIL_SERVER_PATH = isWindows ? '' : '/app/bgutil-source/server';
 
 // --- Concurrency Control ---
 let activeDownloads = 0;
@@ -100,7 +101,7 @@ const downloadLimiter = rateLimit({
 
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v7.4) is Online ✅'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v7.5) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, TTL: 5 * 60 * 1000 };
@@ -239,7 +240,10 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
           '--extractor-args', `youtube:player_client=${attempt.client}`,
           '-o', `${rawPath}.%(ext)s`,
         ];
-        if (attempt.cookies) flags.unshift('--cookies', cookiesPath);
+        if (attempt.cookies) flags.push('--cookies', cookiesPath);
+        if (BGUTIL_SERVER_PATH && fs.existsSync(BGUTIL_SERVER_PATH)) {
+          flags.push('--extractor-args', `youtube:server_home=${BGUTIL_SERVER_PATH}`);
+        }
         if (PO_TOKEN && VISITOR_DATA) {
           flags.push('--extractor-args', `youtube:po_token=web+${PO_TOKEN}`, '--extractor-args', `youtube:visitor_data=${VISITOR_DATA}`);
         }
@@ -295,7 +299,7 @@ app.get('/api/test-ytdlp', async (req, res) => {
   const testUrl = req.query.url || 'https://www.youtube.com/watch?v=KsJ2-7cWTyg';
   const client = req.query.client || 'tv,web';
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.write(`yt-dlp Diagnostic Test (v7.4)\n`);
+  res.write(`yt-dlp Diagnostic Test (v7.5)\n`);
   res.write(`URL: ${testUrl}\n`);
   res.write(`Client: ${client}\n`);
   res.write(`Cookies: ${fs.existsSync(cookiesPath) ? 'FOUND' : 'NOT FOUND'}\n\n`);
@@ -307,7 +311,10 @@ app.get('/api/test-ytdlp', async (req, res) => {
     '--extractor-args', `youtube:player_client=${client}`,
     '-v', '--simulate', '--print', 'filename', testUrl
   ];
-  if (fs.existsSync(cookiesPath)) flags.unshift('--cookies', cookiesPath);
+  if (BGUTIL_SERVER_PATH && fs.existsSync(BGUTIL_SERVER_PATH)) {
+    flags.push('--extractor-args', `youtube:server_home=${BGUTIL_SERVER_PATH}`);
+  }
+  if (fs.existsSync(cookiesPath)) flags.push('--cookies', cookiesPath);
 
   const proc = spawn('yt-dlp', flags);
   proc.stdout.on('data', (d) => res.write(`[OUT] ${d}`));
@@ -338,27 +345,21 @@ app.get('/api/debug-download', async (req, res) => {
     
     // CHANGE E: bgutil server check
     let bgutilLog = '❌ NOT FOUND';
-    try {
-      const manualPaths = [
-        path.join(process.cwd(), 'bgutil-server-src', 'server', 'build', 'generate_once.js'),
-        '/app/bgutil-server-src/server/build/generate_once.js',
-        '/root/bgutil-server-src/build/generate_once.js'
-      ];
-      for (const p of manualPaths) {
-        if (fs.existsSync(p)) { bgutilLog = `✅ FOUND (${p})`; break; }
-      }
-      if (bgutilLog === '❌ NOT FOUND') {
-        // Fallback to python detection
-        const bgutilPath = execSync(
-          "python3 -c \"import bgutil_ytdlp_pot_provider,os; print(os.path.join(os.path.dirname(bgutil_ytdlp_pot_provider.__file__),'server','build','generate_once.js'))\"",
-          { encoding: 'utf8', timeout: 5000 }
-        ).trim();
-        if (fs.existsSync(bgutilPath)) bgutilLog = `✅ FOUND (${bgutilPath})`;
-      }
-    } catch(e) { bgutilLog = `❌ ERROR: ${e.message}`; }
+    if (BGUTIL_SERVER_PATH && fs.existsSync(path.join(BGUTIL_SERVER_PATH, 'build', 'generate_once.js'))) {
+        bgutilLog = `✅ FOUND (${BGUTIL_SERVER_PATH})`;
+    } else {
+        try {
+            const out = execSync(
+                "python3 -c \"import bgutil_ytdlp_pot_provider,os; print(os.path.join(os.path.dirname(bgutil_ytdlp_pot_provider.__file__),'server','build','generate_once.js'))\"",
+                { encoding: 'utf8', timeout: 5000 }
+            ).trim();
+            if (fs.existsSync(out)) bgutilLog = `✅ FOUND (via python: ${out})`;
+            else bgutilLog = `❌ NOT FOUND (checked ${BGUTIL_SERVER_PATH} and python path)`;
+        } catch(e) { bgutilLog = `❌ NOT FOUND (${e.message})`; }
+    }
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.write(`=== Ironclad v7.4 Debug ===\n`);
+    res.write(`=== Ironclad v7.5 Debug ===\n`);
     res.write(`Timestamp: ${new Date().toISOString()}\n\n`);
     res.write(`--- Cookies ---\n`);
     res.write(`  Path: ${cookiesPath}\n`);
@@ -389,4 +390,4 @@ app.get('/api/inspect-fs', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v7.4 Listening on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v7.5 Listening on port ${PORT}`));
