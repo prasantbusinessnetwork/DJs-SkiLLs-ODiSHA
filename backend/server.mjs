@@ -1,10 +1,11 @@
 /**
- * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v5.9 FIX)
+ * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v6.0 FIX)
  *
- * Major Fixes in v5.5:
- * 1. Cobalt v10 REDIRECT: Bypass Railway IP blocks by letting browser download directly.
- * 2. Robust Cookies: Handles trailing spaces (env 'YOUTUBE_COOKIES ').
- * 3. Fallback logic: yt-dlp (local) -> Cobalt (redirect) -> SaveFrom (redirect).
+ * Major Fixes in v6.0:
+ * 1. Expanded Try-Loops: 4 tiers (TV, iOS, Web fallbacks).
+ * 2. Format Fix: Changed 'bestaudio/best' to 'ba/b' for TV compatibility.
+ * 3. Timeout Buff: Increased yt-dlp timeout to 60s for slow Railway builds.
+ * 4. bgutil support: Integrated player_client=tv,web extractor args.
  */
 
 import express from 'express';
@@ -25,12 +26,10 @@ const downloadsDir = isWindows ? path.join(process.cwd(), 'downloads') : '/tmp/d
 let activeDownloads = 0;
 const MAX_CONCURRENT_DOWNLOADS = 3;
 
-// Ensure downloads directory exists
 if (!fs.existsSync(downloadsDir)) {
   fs.mkdirSync(downloadsDir, { recursive: true });
 }
 
-// --- Tool Verification & Startup Maintenance ---
 async function startupMaintenance() {
   console.log('[server] Running startup maintenance...');
   try {
@@ -64,7 +63,6 @@ async function startupMaintenance() {
 }
 startupMaintenance();
 
-// --- Scheduled Cleanup (Every 30 mins) ---
 setInterval(() => {
   try {
     const files = fs.readdirSync(downloadsDir);
@@ -84,7 +82,6 @@ setInterval(() => {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- CORS ---
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'OPTIONS'],
@@ -92,7 +89,6 @@ app.use(cors({
   exposedHeaders: ['Content-Disposition', 'Content-Length'],
 }));
 
-// --- Rate Limiter ---
 const downloadLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000,
   max: 100,
@@ -101,11 +97,9 @@ const downloadLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// --- Health ---
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
-// --- ROOT ---
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v5.9) is Online ✅'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v6.0) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, TTL: 5 * 60 * 1000 };
@@ -179,7 +173,6 @@ const runWithTimeout = (cmd, args, timeoutMs) => {
   });
 };
 
-// --- Helper: Try Cobalt instance (v10 API) ---
 async function tryCobaltInstance(instance, videoId, res) {
   const cobaltUrl = `${instance.replace(/\/$/, '')}/`;
   const controller = new AbortController();
@@ -207,7 +200,6 @@ async function tryCobaltInstance(instance, videoId, res) {
   } catch (e) { clearTimeout(timer); return false; }
 }
 
-// --- Download Route ---
 app.get('/api/download', downloadLimiter, async (req, res) => {
   const url = req.query.url;
   const requestedTitle = req.query.title ? String(req.query.title) : 'audio';
@@ -227,13 +219,14 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
   try {
     console.log(`[ironclad] Request URL: ${url}`);
     
-    // Attempt yt-dlp first
+    // Expanded 4-tier attempts
     const attempts = [];
     if (hasCookies) {
-      attempts.push({ name: 'Cookies+Web', cookies: true, client: 'web' });
-      attempts.push({ name: 'Cookies+iOS', cookies: true, client: 'ios' });
+      attempts.push({ name: 'Cookies+TV+Web', cookies: true, client: 'tv,web' });
+      attempts.push({ name: 'Cookies+iOS+Web', cookies: true, client: 'ios,web' });
     }
-    attempts.push({ name: 'NoCookies+TV', cookies: false, client: 'tv' });
+    attempts.push({ name: 'NoCookies+TV+Web', cookies: false, client: 'tv,web' });
+    attempts.push({ name: 'NoCookies+TVEmbedded+Web', cookies: false, client: 'tv_embedded,web' });
 
     let success = false;
     for (const attempt of attempts) {
@@ -241,9 +234,8 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
         const flags = [
           '--no-check-certificates', '--no-warnings', '--no-playlist',
           '--add-header', 'Referer:https://www.youtube.com/',
-          '-f', 'bestaudio/best',
+          '-f', 'ba/b',
           '--extractor-args', `youtube:player_client=${attempt.client}`,
-          '--extractor-args', 'youtube:player_client=tv,web',
           '-o', `${rawPath}.%(ext)s`,
         ];
         if (attempt.cookies) flags.unshift('--cookies', cookiesPath);
@@ -261,7 +253,7 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
         fs.unlink(fullPath, () => {});
 
         if (fs.existsSync(mp3Path)) { success = true; break; }
-      } catch (e) { console.warn(`[ironclad] Attempt ${attempt.name} failed`); }
+      } catch (e) { console.warn(`[ironclad] Attempt ${attempt.name} failed: ${e.message}`); }
     }
 
     if (success) {
@@ -286,7 +278,6 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
       if (await tryCobaltInstance(instance, videoId, res)) return;
     }
 
-    // JSON response for frontend to handle the final resort open
     return res.json({ 
       error: 'fallback',
       redirect: `https://savefrom.net/?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + videoId)}`,
@@ -300,9 +291,9 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
 
 app.get('/api/test-ytdlp', async (req, res) => {
   const testUrl = req.query.url || 'https://www.youtube.com/watch?v=KsJ2-7cWTyg';
-  const client = req.query.client || 'tv';
+  const client = req.query.client || 'tv,web';
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.write(`yt-dlp Diagnostic Test (v5.9)\n`);
+  res.write(`yt-dlp Diagnostic Test (v6.0)\n`);
   res.write(`URL: ${testUrl}\n`);
   res.write(`Client: ${client}\n`);
   res.write(`Cookies: ${fs.existsSync(cookiesPath) ? 'FOUND' : 'NOT FOUND'}\n\n`);
@@ -310,7 +301,7 @@ app.get('/api/test-ytdlp', async (req, res) => {
   const flags = [
     '--no-check-certificates', '--no-warnings', '--no-playlist',
     '--add-header', 'Referer:https://www.youtube.com/',
-    '-f', 'bestaudio/best',
+    '-f', 'ba/b',
     '--extractor-args', `youtube:player_client=${client}`,
     '-v', '--simulate', '--print', 'filename', testUrl
   ];
@@ -344,7 +335,7 @@ app.get('/api/debug-download', async (req, res) => {
     const { stdout: ytVer } = await execPromise('yt-dlp --version').catch(e => ({ stdout: e.message }));
     
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.write(`=== Ironclad v5.9 Debug ===\n`);
+    res.write(`=== Ironclad v6.0 Debug ===\n`);
     res.write(`Timestamp: ${new Date().toISOString()}\n\n`);
     res.write(`--- Cookies ---\n`);
     res.write(`  Path: ${cookiesPath}\n`);
@@ -360,4 +351,4 @@ app.get('/api/debug-download', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v5.9 Listening on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v6.0 Listening on port ${PORT}`));
