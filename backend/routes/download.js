@@ -4,37 +4,55 @@ import { logger } from "../utils/logger.js";
 
 const router = express.Router();
 
-// List of working Cobalt API instances (fallback chain)
+// Cobalt API v2 instances (updated 2024)
 const COBALT_INSTANCES = [
   "https://cobalt.api.timelessnesses.me",
-  "https://co.wuk.sh",
-  "https://cobalt.tools",
+  "https://cobalt.synzr.space",
+  "https://cbl.0x7f.cc",
+  "https://api.cobalt.tools",
 ];
 
 async function getCobaltAudioUrl(youtubeUrl, instance) {
-  const res = await fetch(`${instance}/api/json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({
-      url: youtubeUrl,
-      isAudioOnly: true,
-      aFormat: "mp3",
-      filenamePattern: "basic",
-    }),
-    signal: AbortSignal.timeout(10000), // 10 sec timeout per instance
-  });
+  try {
+    const res = await fetch(`${instance}/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        url: youtubeUrl,
+        downloadMode: "audio",
+        audioFormat: "mp3",
+        filenameStyle: "basic",
+      }),
+      signal: AbortSignal.timeout(12000),
+    });
 
-  if (!res.ok) return null;
-  const data = await res.json();
+    if (!res.ok) {
+      // Try legacy /api/json endpoint as fallback for older instances
+      const res2 = await fetch(`${instance}/api/json`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ url: youtubeUrl, isAudioOnly: true, aFormat: "mp3", filenamePattern: "basic" }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res2.ok) return null;
+      const data2 = await res2.json();
+      if ((data2.status === "redirect" || data2.status === "stream") && data2.url) return data2.url;
+      return null;
+    }
 
-  // Cobalt returns: { status: "redirect" | "stream" | "error", url: "..." }
-  if ((data.status === "redirect" || data.status === "stream") && data.url) {
-    return data.url;
+    const data = await res.json();
+    // v2 API returns { status: "redirect" | "tunnel" | "error", url: "..." }
+    if ((data.status === "redirect" || data.status === "tunnel" || data.status === "stream") && data.url) {
+      return data.url;
+    }
+    return null;
+  } catch (e) {
+    logger.error(`Cobalt ${instance} error: ${e.message}`);
+    return null;
   }
-  return null;
 }
 
 router.get("/", downloadLimiter, async (req, res) => {
@@ -50,29 +68,26 @@ router.get("/", downloadLimiter, async (req, res) => {
     youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
   }
 
-  logger.info(`Download request: ${youtubeUrl}`);
+  logger.info(`[Download] Request for: ${youtubeUrl}`);
 
-  // Try Cobalt instances in order until one works
+  // Try each Cobalt instance in order
   let audioUrl = null;
   for (const instance of COBALT_INSTANCES) {
-    try {
-      audioUrl = await getCobaltAudioUrl(youtubeUrl, instance);
-      if (audioUrl) {
-        logger.info(`Got audio URL from ${instance}`);
-        break;
-      }
-    } catch (err) {
-      logger.error(`Cobalt instance ${instance} failed: ${err.message}`);
+    audioUrl = await getCobaltAudioUrl(youtubeUrl, instance);
+    if (audioUrl) {
+      logger.info(`[Download] Got URL from: ${instance}`);
+      break;
     }
   }
 
   if (!audioUrl) {
-    // Last-resort: send user directly to YouTube if everything fails
-    return res.redirect(`https://www.youtube.com/watch?v=${videoId}`);
+    logger.error(`[Download] All Cobalt instances failed for: ${youtubeUrl}`);
+    // Fallback: redirect to YouTube video so user is not left with an error
+    const vid = youtubeUrl.includes("v=") ? youtubeUrl.split("v=")[1].split("&")[0] : videoId;
+    return res.redirect(`https://www.youtube.com/watch?v=${vid}`);
   }
 
-  // Redirect user directly to the pre-signed audio URL
-  // This means ZERO streaming load on Railway and works on all browsers/mobile
+  // 302 redirect to the direct audio URL — browser handles the download
   return res.redirect(302, audioUrl);
 });
 
