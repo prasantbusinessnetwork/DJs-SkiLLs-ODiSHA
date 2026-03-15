@@ -1,5 +1,5 @@
 /**
- * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v7.0 FIX)
+ * server.mjs — DJs SkiLLs ODiSHA Backend (Ironclad v7.1 FIX)
  *
  * Major Fixes in v7.0:
  * 1. Expanded Try-Loops: 4 tiers (TV, iOS, Web combined).
@@ -100,7 +100,7 @@ const downloadLimiter = rateLimit({
 
 app.get(['/health', '/api/health'], (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
-app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v7.0) is Online ✅'));
+app.get('/', (_req, res) => res.send('DJs SkiLLs ODiSHA Backend (Ironclad v7.1) is Online ✅'));
 
 // ─── Videos (Dynamic YouTube API Fetch) ────────────────────────────
 const videoCache = { data: null, lastFetched: 0, TTL: 5 * 60 * 1000 };
@@ -295,7 +295,7 @@ app.get('/api/test-ytdlp', async (req, res) => {
   const testUrl = req.query.url || 'https://www.youtube.com/watch?v=KsJ2-7cWTyg';
   const client = req.query.client || 'tv,web';
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.write(`yt-dlp Diagnostic Test (v7.0)\n`);
+  res.write(`yt-dlp Diagnostic Test (v7.1)\n`);
   res.write(`URL: ${testUrl}\n`);
   res.write(`Client: ${client}\n`);
   res.write(`Cookies: ${fs.existsSync(cookiesPath) ? 'FOUND' : 'NOT FOUND'}\n\n`);
@@ -344,10 +344,13 @@ app.get('/api/debug-download', async (req, res) => {
         { encoding: 'utf8', timeout: 5000 }
       ).trim();
       if (fs.existsSync(bgutilPath)) bgutilStatus = `✅ FOUND (${bgutilPath})`;
-    } catch(e) {}
+      else bgutilStatus = `❌ NOT FOUND (File missing at ${bgutilPath})`;
+    } catch(e) {
+      bgutilStatus = `❌ ERROR (${e.message})`;
+    }
 
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.write(`=== Ironclad v7.0 Debug ===\n`);
+    res.write(`=== Ironclad v7.1 Debug ===\n`);
     res.write(`Timestamp: ${new Date().toISOString()}\n\n`);
     res.write(`--- Cookies ---\n`);
     res.write(`  Path: ${cookiesPath}\n`);
@@ -364,4 +367,18 @@ app.get('/api/debug-download', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v7.0 Listening on port ${PORT}`));
+app.get('/api/inspect-fs', async (req, res) => {
+  const cmd = req.query.cmd || 'ls -la .';
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  try {
+    const { stdout, stderr } = await execPromise(cmd).catch(e => ({ stdout: e.message, stderr: '' }));
+    res.write(`Command: ${cmd}\n\n`);
+    res.write(stdout);
+    if (stderr) res.write(`\nERR: ${stderr}`);
+    res.end();
+  } catch (err) {
+    res.status(500).send('Inspect error: ' + err.message);
+  }
+});
+
+app.listen(PORT, '0.0.0.0', () => console.log(`[server] Ironclad v7.1 Listening on port ${PORT}`));
