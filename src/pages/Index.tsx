@@ -146,12 +146,12 @@ const Index = () => {
         )}
 
         {/* Section 2: All Videos (Everything Else) */}
-        {videos.length > 0 && (
+        {allOtherVideos.length > 0 && (
           <div className="mb-20">
             <div className="flex items-center justify-between mb-2">
                <span className="text-[10px] font-bold text-primary tracking-[0.2em] uppercase">MP3 format ready for all</span>
             </div>
-            <MixSection icon="🎧" title="All Videos" mixes={allOtherVideos.length > 0 ? allOtherVideos : videos.map(v => ({...v, tag: v.tag || "Mix", thumbnail: v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/mqdefault.jpg`}))} />
+            <MixSection icon="🎧" title="All Videos" mixes={allOtherVideos} />
           </div>
         )}
 
