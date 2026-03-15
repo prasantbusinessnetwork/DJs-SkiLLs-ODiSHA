@@ -36,6 +36,11 @@ app.use(errorHandler);
 // Start the server safely
 const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`Production Backend running on port ${PORT}`);
+  console.log("Routes configured:");
+  console.log("- /api/health");
+  console.log("- /api/download");
+  console.log("- /api/videos");
+  console.log("- /api/latest");
 });
 
 // Graceful shutdown protection
