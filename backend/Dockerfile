@@ -1,6 +1,5 @@
 FROM node:20-slim
 
-# ESSENTIALS
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     python3 \
@@ -9,24 +8,40 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# YT-DLP
 RUN wget -q https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp \
     -O /usr/local/bin/yt-dlp && \
     chmod a+rx /usr/local/bin/yt-dlp
 
-WORKDIR /app
+RUN pip install -U bgutil-ytdlp-pot-provider --break-system-packages 2>/dev/null || \
+    pip3 install -U bgutil-ytdlp-pot-provider --break-system-packages 2>/dev/null || \
+    echo "bgutil install skipped"
 
-# PIP BGUTIL (Minimal install)
-RUN pip install -U bgutil-ytdlp-pot-provider --break-system-packages 2>/dev/null || echo "pip skipped"
+# Build bgutil Node.js server (required for PO Token generation)
+RUN python3 << 'EOF'
+import os, subprocess, sys
+try:
+    import bgutil_ytdlp_pot_provider
+    srv = os.path.join(os.path.dirname(bgutil_ytdlp_pot_provider.__file__), 'server')
+    print(f'[bgutil] Building server at: {srv}')
+    subprocess.run(['npm', 'install'], cwd=srv, check=True)
+    subprocess.run(['npm', 'run', 'build'], cwd=srv, check=True)
+    built = os.path.exists(os.path.join(srv, 'build', 'generate_once.js'))
+    print(f'[bgutil] Build status: {"SUCCESS" if built else "FAILED"}')
+except Exception as e:
+    print(f'[bgutil] Build error: {e}')
+    sys.exit(0)
+EOF
+
+RUN python3 -c "import bgutil_ytdlp_pot_provider, os; print(os.path.dirname(bgutil_ytdlp_pot_provider.__file__))" > /tmp/bgutil_path.txt 2>/dev/null || true
+
+RUN yt-dlp --version && ffmpeg -version | head -n 1
 
 ENV NODE_PATH=/usr/local/lib/node_modules
 ENV NODE_ENV=production
-
+WORKDIR /app
 COPY backend/package.json backend/package-lock.json* ./
-RUN npm install --production --ignore-scripts || npm install --production
-
+RUN npm install --production --ignore-scripts 2>/dev/null || npm install --production
 COPY backend/server.mjs ./
 COPY backend/scripts/ ./scripts/
-
 EXPOSE 3000
 CMD ["node", "server.mjs"]

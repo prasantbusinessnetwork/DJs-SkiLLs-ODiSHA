@@ -1,0 +1,14 @@
+[phases.setup]
+aptPkgs = ["ffmpeg", "python3", "python3-pip", "wget"]
+
+[phases.install]
+cmds = [
+  "npm install",
+  "wget -q https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp",
+  "chmod a+rx /usr/local/bin/yt-dlp",
+  "pip install -U bgutil-ytdlp-pot-provider --break-system-packages",
+  "python3 -c \"import os,subprocess,bgutil_ytdlp_pot_provider as b; srv=os.path.join(os.path.dirname(b.__file__),'server'); subprocess.run(['npm','install'],cwd=srv,check=True); subprocess.run(['npm','run','build'],cwd=srv,check=True); print('bgutil built at',srv)\" || echo 'bgutil build skipped'",
+  "yt-dlp --version"
+]
+[start]
+cmd = "npm start"
