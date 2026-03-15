@@ -21,6 +21,7 @@ import { rateLimit } from 'express-rate-limit';
 const execPromise = promisify(exec);
 const isWindows = process.platform === 'win32';
 const downloadsDir = isWindows ? path.join(process.cwd(), 'downloads') : '/tmp/djs_downloads';
+const BGUTIL_SERVER_PATH = isWindows ? '' : '/app/bgutil-server/server';
 
 // --- Concurrency Control ---
 let activeDownloads = 0;
@@ -239,6 +240,9 @@ app.get('/api/download', downloadLimiter, async (req, res) => {
           '-o', `${rawPath}.%(ext)s`,
         ];
         if (attempt.cookies) flags.unshift('--cookies', cookiesPath);
+        if (BGUTIL_SERVER_PATH && fs.existsSync(BGUTIL_SERVER_PATH)) {
+          flags.push('--extractor-args', `youtube:server_home=${BGUTIL_SERVER_PATH}`);
+        }
         if (PO_TOKEN && VISITOR_DATA) {
           flags.push('--extractor-args', `youtube:po_token=web+${PO_TOKEN}`, '--extractor-args', `youtube:visitor_data=${VISITOR_DATA}`);
         }
@@ -305,6 +309,9 @@ app.get('/api/test-ytdlp', async (req, res) => {
     '--extractor-args', `youtube:player_client=${client}`,
     '-v', '--simulate', '--print', 'filename', testUrl
   ];
+  if (BGUTIL_SERVER_PATH && fs.existsSync(BGUTIL_SERVER_PATH)) {
+    flags.push('--extractor-args', `youtube:server_home=${BGUTIL_SERVER_PATH}`);
+  }
   if (fs.existsSync(cookiesPath)) flags.unshift('--cookies', cookiesPath);
 
   const proc = spawn('yt-dlp', flags);
@@ -345,6 +352,7 @@ app.get('/api/debug-download', async (req, res) => {
     res.write(envStatus + '\n\n');
     res.write(`--- Tools ---\n`);
     res.write(`  yt-dlp: ${ytVer.trim()}\n`);
+    res.write(`  bgutil-server: ${BGUTIL_SERVER_PATH && fs.existsSync(BGUTIL_SERVER_PATH) ? '✅ FOUND' : '❌ NOT FOUND'}\n`);
     res.end();
   } catch (err) {
     res.status(500).send('Debug error: ' + err.message);
